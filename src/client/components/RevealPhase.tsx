@@ -47,7 +47,9 @@ export function RevealPhase({ room, me }: Props) {
       <div className="panel">
         <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">Players</h3>
         <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {room.players.map((p) => {
+          {room.players
+            .filter((p) => !p.spectating && p.originalRole)
+            .map((p) => {
             const orig = p.originalRole!;
             const final = p.finalRole!;
             const swapped = orig !== final;

@@ -44,9 +44,6 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
       if (!ok) return cb({ ok: false, error: "Could not resume" });
       playerId = resumePlayerId;
     } else {
-      if (room.phase !== "lobby") {
-        return cb({ ok: false, error: "Game already started" });
-      }
       const dupe = room.findPlayerByName(name.trim());
       if (dupe && !dupe.connected) {
         room.reconnectPlayer(dupe.id, socket.id, name.trim());
@@ -54,7 +51,10 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
       } else if (dupe) {
         return cb({ ok: false, error: "Name already taken in this room" });
       } else {
-        const player = room.addPlayer(name.trim(), socket.id);
+        // New joiners always start as spectators. In the lobby they can opt
+        // into the upcoming game; mid-game they're a spectator until the
+        // next round begins.
+        const player = room.addPlayer(name.trim(), socket.id, { spectating: true });
         playerId = player.id;
       }
     }
@@ -74,10 +74,10 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     detach();
   });
 
-  socket.on("room:spectate", () => {
+  socket.on("room:spectate", ({ spectating }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
-    const result = room.setSpectator(attachedPlayerId);
+    const result = room.setSpectator(attachedPlayerId, !!spectating);
     if (!result.ok) return socket.emit("error", { message: result.error });
     room.broadcast();
   });

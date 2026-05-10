@@ -103,7 +103,9 @@ export function setupNightStep(room: Room, step: NightStep) {
   switch (step) {
     case "doppelganger": {
       for (const d of actors) {
-        const eligible = room.players.filter((p) => p.id !== d.id).map((p) => p.id);
+        const eligible = room.players
+          .filter((p) => p.id !== d.id && !p.spectating)
+          .map((p) => p.id);
         d.prompt = {
           kind: "doppelganger_choose",
           message:
@@ -181,7 +183,9 @@ export function setupNightStep(room: Room, step: NightStep) {
     }
     case "robber": {
       for (const r of actors) {
-        const eligible = room.players.filter((p) => p.id !== r.id).map((p) => p.id);
+        const eligible = room.players
+          .filter((p) => p.id !== r.id && !p.spectating)
+          .map((p) => p.id);
         r.prompt = {
           kind: "robber_choose",
           message:
@@ -194,7 +198,9 @@ export function setupNightStep(room: Room, step: NightStep) {
     }
     case "troublemaker": {
       for (const t of actors) {
-        const eligible = room.players.filter((p) => p.id !== t.id).map((p) => p.id);
+        const eligible = room.players
+          .filter((p) => p.id !== t.id && !p.spectating)
+          .map((p) => p.id);
         t.prompt = {
           kind: "troublemaker_choose",
           message: "You are the Troublemaker. You may swap two other players' cards.",
@@ -254,7 +260,9 @@ export function applyNightAction(
         return { ok: false, error: "Not doppelganger step" };
       }
       const target = room.players.find((p) => p.id === action.targetId);
-      if (!target || target.id === player.id) return { ok: false, error: "Invalid target" };
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
       const copied = room.currentRoleOf(target.id);
       if (copied === "doppelganger") return { ok: false, error: "Cannot copy a Doppelganger" };
       player.doppelgangerCopied = copied;
@@ -303,7 +311,9 @@ export function applyNightAction(
     case "seer_view_player": {
       if (step !== "seer" || !isEffective(player, "seer")) return { ok: false, error: "Not seer step" };
       const target = room.players.find((p) => p.id === action.targetId);
-      if (!target || target.id === player.id) return { ok: false, error: "Invalid target" };
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
       const role = room.currentRoleOf(target.id);
       player.notes.push({ kind: "seer_player", playerId: target.id, role });
       room.actionLog.push({
@@ -336,7 +346,9 @@ export function applyNightAction(
         return { ok: true };
       }
       const target = room.players.find((p) => p.id === action.targetId);
-      if (!target || target.id === player.id) return { ok: false, error: "Invalid target" };
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
       // Capture the actor's current role before the swap — that's what the
       // target ends up holding after.
       const actorOldRole = room.currentRoleOf(player.id);
@@ -368,7 +380,9 @@ export function applyNightAction(
       }
       const a = room.players.find((p) => p.id === aId);
       const b = room.players.find((p) => p.id === bId);
-      if (!a || !b) return { ok: false, error: "Unknown player" };
+      if (!a || !b || a.spectating || b.spectating) {
+        return { ok: false, error: "Unknown player" };
+      }
       // After the swap, a holds b's old role and vice versa.
       const aOld = room.currentRoleOf(a.id);
       const bOld = room.currentRoleOf(b.id);

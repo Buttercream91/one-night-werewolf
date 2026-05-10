@@ -15,8 +15,10 @@ interface Props {
 
 export function VotePhase({ room, me }: Props) {
   const myVote = room.players.find((p) => p.id === me.myId)?.votedFor ?? null;
-  const total = room.players.length;
-  const cast = room.players.filter((p) => p.votedFor != null).length;
+  // Spectators are out of the round — not vote targets and not vote sources.
+  const activePlayers = room.players.filter((p) => !p.spectating);
+  const total = activePlayers.length;
+  const cast = activePlayers.filter((p) => p.votedFor != null).length;
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
 
   // Play the "begin vote" announcement once when this phase mounts. Each
@@ -46,7 +48,7 @@ export function VotePhase({ room, me }: Props) {
         <div className="space-y-6">
           <div className="panel">
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {room.players.map((p) => {
+              {activePlayers.map((p) => {
                 const selected = myVote === p.id;
                 const isSelf = p.id === me.myId;
                 return (

@@ -250,15 +250,15 @@ function BackToLobbyButton({ room, myId }: { room: PublicRoom; myId: string }) {
       onClick={() => {
         if (
           confirm(
-            "Step out for the rest of this round? Your card stays in the deck but you stop acting. You'll be back in the lobby when the round ends.",
+            "Switch to spectator for the rest of this round? Your card stays in the deck but you stop acting. You'll see every player's actual card while you watch.",
           )
         ) {
-          send.spectate();
+          send.spectate(true);
         }
       }}
-      title="Step back to spectate the rest of this round"
+      title="Switch to spectator for the rest of this round"
     >
-      Back to lobby
+      Spectate
     </button>
   );
 }

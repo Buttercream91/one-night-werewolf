@@ -16,17 +16,20 @@ export function Lobby({ room, me }: Props) {
     () => !!me && room.players.find((p) => p.id === me.myId)?.isHost,
     [room, me],
   );
-  const targetCount = room.players.length + 3;
+  const activePlayers = room.players.filter((p) => !p.spectating);
+  const spectators = room.players.filter((p) => p.spectating);
+  const targetCount = activePlayers.length + 3;
   const lobbyReadyIds = room.lobbyReadyIds ?? [];
-  const everyoneReady = room.players
-    .filter((p) => !p.isHost)
-    .every((p) => lobbyReadyIds.includes(p.id));
+  const nonHostActive = activePlayers.filter((p) => !p.isHost);
+  const everyoneReady = nonHostActive.every((p) => lobbyReadyIds.includes(p.id));
   const valid =
     room.selectedRoles.length === targetCount &&
-    room.players.length >= 3 &&
-    room.players.length <= 10 &&
+    activePlayers.length >= 3 &&
+    activePlayers.length <= 10 &&
     everyoneReady;
   const iAmReady = !!me && lobbyReadyIds.includes(me.myId);
+  const iAmSpectator = !!me && !!room.players.find((p) => p.id === me.myId)?.spectating;
+  const canJoinAsPlayer = activePlayers.length < 10;
 
   const counts: Partial<Record<Role, number>> = {};
   for (const r of room.selectedRoles) counts[r] = (counts[r] ?? 0) + 1;
@@ -40,7 +43,7 @@ export function Lobby({ room, me }: Props) {
 
   function randomise() {
     if (!isHost) return;
-    send.setRoles(randomDeck(room.players.length));
+    send.setRoles(randomDeck(activePlayers.length));
   }
 
   return (
@@ -48,54 +51,116 @@ export function Lobby({ room, me }: Props) {
       <div className="panel">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="heading text-xl text-indigo-200">Players</h2>
+            <h2 className="heading text-xl text-indigo-200">
+              Players <span className="text-sm text-slate-400">({activePlayers.length}/10)</span>
+            </h2>
             <p className="text-sm text-slate-400">
               Share the code <CopyableCode code={room.code} className="text-slate-100" /> with your
-              friends. {room.players.length}/10 in the room.
+              friends. New joiners start as spectators — they pick whether to play.
             </p>
           </div>
+          {iAmSpectator && (
+            <button
+              className={canJoinAsPlayer ? "btn-primary text-sm" : "btn-ghost text-sm"}
+              disabled={!canJoinAsPlayer}
+              onClick={() => send.spectate(false)}
+              title={canJoinAsPlayer ? "Join the upcoming game" : "Player slots are full (10 max)"}
+            >
+              Join game
+            </button>
+          )}
         </div>
-        <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {room.players.map((p) => {
-            const ready = lobbyReadyIds.includes(p.id);
-            const isMe = me?.myId === p.id;
-            const canKick = isHost && !p.isHost && !isMe;
-            return (
-              <li
-                key={p.id}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{p.name}</span>
-                  <div className="flex items-center gap-1.5">
-                    {p.isHost ? (
-                      <span className="text-xs text-amber-300">host</span>
-                    ) : ready ? (
-                      <span className="text-xs text-emerald-300">ready</span>
-                    ) : null}
-                    {canKick && (
-                      <button
-                        className="text-xs text-rose-300 hover:text-rose-200 px-1.5 py-0.5 rounded border border-rose-900 hover:border-rose-700"
-                        onClick={() => {
-                          if (confirm(`Kick ${p.name}? The room code will change.`)) {
-                            send.kick(p.id);
-                          }
-                        }}
-                        title="Kick this player; room code will rotate"
-                      >
-                        Kick
-                      </button>
-                    )}
+        {activePlayers.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 italic">
+            No active players yet — click Join game to play.
+          </p>
+        ) : (
+          <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {activePlayers.map((p) => {
+              const ready = lobbyReadyIds.includes(p.id);
+              const isMe = me?.myId === p.id;
+              const canKick = isHost && !p.isHost && !isMe;
+              return (
+                <li
+                  key={p.id}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{p.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      {p.isHost ? (
+                        <span className="text-xs text-amber-300">host</span>
+                      ) : ready ? (
+                        <span className="text-xs text-emerald-300">ready</span>
+                      ) : null}
+                      {canKick && (
+                        <button
+                          className="text-xs text-rose-300 hover:text-rose-200 px-1.5 py-0.5 rounded border border-rose-900 hover:border-rose-700"
+                          onClick={() => {
+                            if (confirm(`Kick ${p.name}? The room code will change.`)) {
+                              send.kick(p.id);
+                            }
+                          }}
+                          title="Kick this player; room code will rotate"
+                        >
+                          Kick
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {!p.connected && <span className="text-xs">offline</span>}
-                {isMe && <span className="text-xs text-indigo-300">you</span>}
-              </li>
-            );
-          })}
-        </ul>
+                  {!p.connected && <span className="text-xs">offline</span>}
+                  {isMe && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-indigo-300">you</span>
+                      {!p.isHost && (
+                        <button
+                          className="text-xs text-slate-400 hover:text-slate-200 underline"
+                          onClick={() => send.spectate(true)}
+                          title="Switch to spectator"
+                        >
+                          spectate
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="heading text-xl text-indigo-200">
+            Spectators <span className="text-sm text-slate-400">({spectators.length})</span>
+          </h2>
+        </div>
+        {spectators.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500 italic">No one is spectating.</p>
+        ) : (
+          <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {spectators.map((p) => {
+              const isMe = me?.myId === p.id;
+              return (
+                <li
+                  key={p.id}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    p.connected ? "border-slate-800 bg-slate-900/60" : "border-slate-800 bg-slate-900 text-slate-500"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-300">{p.name}</span>
+                    {isMe && <span className="text-xs text-indigo-300">you</span>}
+                  </div>
+                  {!p.connected && <span className="text-xs">offline</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <NarratorPicker />
@@ -233,7 +298,8 @@ export function Lobby({ room, me }: Props) {
                     everyoneReady ? "text-emerald-300" : "text-amber-300"
                   }`}
                 >
-                  {lobbyReadyIds.length}/{room.players.filter((p) => !p.isHost).length}
+                  {nonHostActive.filter((p) => lobbyReadyIds.includes(p.id)).length}/
+                  {nonHostActive.length}
                 </span>
               </span>
             </>
@@ -248,11 +314,15 @@ export function Lobby({ room, me }: Props) {
                   ? "Start the game"
                   : !everyoneReady
                     ? "Waiting for all players to ready up"
-                    : `Need ${targetCount} role cards and 3+ players to start`
+                    : `Need ${targetCount} role cards and 3+ active players to start`
               }
             >
               Start game
             </button>
+          ) : iAmSpectator ? (
+            <span className="text-sm text-slate-400 italic">
+              Spectating — waiting for the host to start
+            </span>
           ) : (
             <button
               className={iAmReady ? "btn-ghost" : "btn-primary"}

@@ -31,7 +31,11 @@ export function ActiveDeckPanel({ roles }: Props) {
   );
 
   return (
-    <div className="panel">
+    // relative + z-20 raises this whole panel into a stacking context above
+    // its sibling panels (which are z-auto). Without it, the description
+    // tooltip — which extends below the chip — gets painted under the next
+    // panel in DOM order (Players in Day phase).
+    <div className="panel relative z-20">
       <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">
         Active deck{" "}
         <span className="text-slate-500">

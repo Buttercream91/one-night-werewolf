@@ -102,7 +102,7 @@ export class Room {
 
   // ---- Player management ----
 
-  addPlayer(name: string, socketId: string): ServerPlayer {
+  addPlayer(name: string, socketId: string, opts: { spectating?: boolean } = {}): ServerPlayer {
     const player: ServerPlayer = {
       id: newId(),
       name,
@@ -110,6 +110,7 @@ export class Room {
       connected: true,
       notes: [],
       userNotes: [],
+      spectating: opts.spectating ?? false,
     };
     this.players.push(player);
     return player;
@@ -152,16 +153,18 @@ export class Room {
 
   startGame(): ActionResult {
     if (this.phase !== "lobby") return { ok: false, error: "Game already started" };
-    const numPlayers = this.players.length;
-    if (numPlayers < 3) return { ok: false, error: "Need at least 3 players" };
-    if (numPlayers > 10) return { ok: false, error: "Maximum 10 players" };
+    const activePlayers = this.players.filter((p) => !p.spectating);
+    const numPlayers = activePlayers.length;
+    if (numPlayers < 3) return { ok: false, error: "Need at least 3 active players" };
+    if (numPlayers > 10) return { ok: false, error: "Maximum 10 active players" };
     if (this.selectedRoles.length !== numPlayers + 3) {
       return {
         ok: false,
         error: `Need exactly ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
       };
     }
-    const notReady = this.players.filter((p) => p.id !== this.hostId && !p.lobbyReady);
+    // Only non-host active players need to ready up.
+    const notReady = activePlayers.filter((p) => p.id !== this.hostId && !p.lobbyReady);
     if (notReady.length > 0) {
       return { ok: false, error: `Waiting on ${notReady.length} player(s) to ready up` };
     }
@@ -175,8 +178,9 @@ export class Room {
     }
 
     const deck = shuffle(this.selectedRoles.slice());
-    this.players.forEach((p, i) => {
-      p.originalRole = deck[i];
+    // Reset shared per-game state on every player (active and spectator).
+    this.players.forEach((p) => {
+      p.originalRole = undefined;
       p.doppelgangerCopied = undefined;
       p.knownCurrentRole = undefined;
       p.cardFaceDown = false;
@@ -186,12 +190,16 @@ export class Room {
       p.vote = null;
       p.ready = false;
       p.lobbyReady = false;
-      p.spectating = false;
+    });
+    // Deal cards only to non-spectator players. Spectators stay in the room
+    // with no role and no card; they watch via spectatorVision.
+    activePlayers.forEach((p, i) => {
+      p.originalRole = deck[i];
     });
     this.centerCards = deck.slice(numPlayers, numPlayers + 3);
     this.originalCenterCards = this.centerCards.slice();
     this.currentRoles.clear();
-    for (const p of this.players) {
+    for (const p of activePlayers) {
       if (p.originalRole) this.currentRoles.set(p.id, p.originalRole);
     }
     this.killedIds = [];
@@ -207,6 +215,10 @@ export class Room {
 
   resetToLobby() {
     this.phase = "lobby";
+    // Spectators stay spectators across the round boundary — they need to
+    // explicitly elect into the next game. Active players who chose to step
+    // out mid-round (set spectating mid-game) likewise stay spectator until
+    // they opt back in.
     this.players.forEach((p) => {
       p.originalRole = undefined;
       p.doppelgangerCopied = undefined;
@@ -218,7 +230,6 @@ export class Room {
       p.vote = null;
       p.ready = false;
       p.lobbyReady = false;
-      p.spectating = false;
     });
     this.centerCards = [];
     this.originalCenterCards = [];
@@ -348,8 +359,12 @@ export class Room {
   setAccusation(accuserId: string, targetId: string, role: Role | null): ActionResult {
     if (this.phase !== "day") return { ok: false, error: "Only during the day" };
     if (this.paused) return { ok: false, error: "Game is paused" };
-    if (!this.hasPlayer(accuserId)) return { ok: false, error: "Unknown player" };
-    if (!this.hasPlayer(targetId)) return { ok: false, error: "Unknown target" };
+    const accuser = this.players.find((p) => p.id === accuserId);
+    if (!accuser || accuser.spectating) {
+      return { ok: false, error: "Spectators don't accuse" };
+    }
+    const target = this.players.find((p) => p.id === targetId);
+    if (!target || target.spectating) return { ok: false, error: "Unknown target" };
     // Drop any existing entry for this (accuser, target) pair — re-accusing
     // replaces, role=null clears.
     this.accusations = this.accusations.filter(
@@ -369,8 +384,11 @@ export class Room {
     if (this.paused) return;
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return;
+    if (p.spectating) return;
     p.ready = ready;
-    if (this.players.filter((p) => p.connected).every((p) => p.ready)) {
+    // Only connected, non-spectating players block the advance.
+    const blockers = this.players.filter((q) => q.connected && !q.spectating);
+    if (blockers.length > 0 && blockers.every((q) => q.ready)) {
       this.beginVote();
     }
   }
@@ -389,15 +407,19 @@ export class Room {
     if (this.paused) return { ok: false, error: "Game is paused" };
     const voter = this.players.find((p) => p.id === playerId);
     if (!voter) return { ok: false, error: "Unknown player" };
-    if (targetId !== "no_kill" && !this.hasPlayer(targetId)) {
-      return { ok: false, error: "Unknown vote target" };
+    if (voter.spectating) return { ok: false, error: "Spectators don't vote" };
+    if (targetId !== "no_kill") {
+      const target = this.players.find((p) => p.id === targetId);
+      if (!target || target.spectating) return { ok: false, error: "Unknown vote target" };
     }
     const wasUnset = voter.vote == null;
     voter.vote = targetId;
     if (wasUnset) {
       this.actionLog.push({ kind: "vote", voterId: playerId, targetId: targetId as string });
     }
-    if (this.players.every((p) => p.vote != null)) {
+    // Spectators and disconnected players don't gate the resolve.
+    const blockers = this.players.filter((q) => q.connected && !q.spectating);
+    if (blockers.length > 0 && blockers.every((q) => q.vote != null)) {
       this.resolveAndReveal();
     }
     return { ok: true };
@@ -455,7 +477,7 @@ export class Room {
   privateViewFor(playerId: string): PrivateView {
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return { myId: playerId, notes: [], userNotes: [] };
-    return {
+    const view: PrivateView = {
       myId: p.id,
       myOriginalRole: p.originalRole,
       myKnownCurrentRole: p.knownCurrentRole,
@@ -464,6 +486,23 @@ export class Room {
       userNotes: p.userNotes,
       prompt: p.prompt,
     };
+    // Spectators see the full table while a round is in progress: every
+    // active player's current role + their personal notes, plus the centre.
+    if (p.spectating && this.phase !== "lobby") {
+      view.spectatorVision = {
+        players: this.players
+          .filter((q) => !q.spectating && q.originalRole != null)
+          .map((q) => ({
+            id: q.id,
+            currentRole: this.currentRoles.get(q.id) ?? q.originalRole!,
+            originalRole: q.originalRole!,
+            notes: q.notes,
+            userNotes: q.userNotes,
+          })),
+        centerCards: this.centerCards.slice(),
+      };
+    }
+    return view;
   }
 
   // Free-form text notes the player adds themselves (visible only to them).
@@ -574,17 +613,39 @@ export class Room {
     return { ok: true };
   }
 
-  // Move a player to spectator mode for the rest of this round. Their card
-  // stays in play (the deck was fixed at deal time and other roles' info may
-  // already reference theirs), but they stop acting, voting, or holding up
-  // phase advancement. The flag clears on game start / reset to lobby.
-  setSpectator(playerId: string): ActionResult {
-    if (this.phase === "lobby") return { ok: false, error: "Already in the lobby" };
+  // Toggle a player's spectating status.
+  //
+  // In lobby phase: both directions work. The player chooses whether to play
+  // the upcoming round or watch — opting back in is constrained by the
+  // active-player cap (10 max).
+  //
+  // Mid-game: only spectating=true is honoured. Once the deck is dealt you
+  // can step out, but you can't step back into a round you weren't dealt
+  // into. The card you held stays in the deck (other roles' info may already
+  // reference it), but you stop acting, voting, or holding up phase
+  // advancement.
+  setSpectator(playerId: string, spectating: boolean): ActionResult {
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return { ok: false, error: "Unknown player" };
-    if (p.spectating) return { ok: true };
+    if (p.spectating === spectating) return { ok: true };
+
+    if (!spectating) {
+      // Becoming a player.
+      if (this.phase !== "lobby") {
+        return { ok: false, error: "Can only join the active player list in the lobby" };
+      }
+      const activeCount = this.players.filter((q) => !q.spectating).length;
+      if (activeCount >= 10) {
+        return { ok: false, error: "Active player list is full (10 max)" };
+      }
+      p.spectating = false;
+      return { ok: true };
+    }
+
+    // Becoming a spectator.
     p.spectating = true;
     p.prompt = undefined;
+    p.lobbyReady = false;
     // If they had a pending night action, default it now so the step doesn't
     // wait on them and other roles' visible info stays consistent.
     if (this.phase === "night" && this.nightStep && this.nightPendingActors.has(playerId)) {
@@ -596,24 +657,24 @@ export class Room {
       const isLoneWolf = effectiveWolves === 1;
       const fallbackTargetId =
         this.nightStep === "doppelganger"
-          ? this.players.find((q) => q.id !== p.id)?.id
+          ? this.players.find((q) => q.id !== p.id && !q.spectating)?.id
           : undefined;
       const action = defaultActionFor(this.nightStep, isLoneWolf, fallbackTargetId);
       applyNightAction(this, p, action);
       this.nightPendingActors.delete(playerId);
     }
-    // Day: count them as ready so the day doesn't sit waiting on them.
+    // Day: re-check completion now that the spectator no longer counts.
     if (this.phase === "day") {
-      p.ready = true;
-      if (this.players.filter((q) => q.connected).every((q) => q.ready)) {
+      const blockers = this.players.filter((q) => q.connected && !q.spectating);
+      if (blockers.length > 0 && blockers.every((q) => q.ready)) {
         this.beginVote();
       }
     }
-    // Vote: auto-abstain so their vote doesn't block resolveAndReveal.
-    if (this.phase === "vote" && p.vote == null) {
-      p.vote = "no_kill";
-      this.actionLog.push({ kind: "vote", voterId: playerId, targetId: "no_kill" });
-      if (this.players.every((q) => q.vote != null)) {
+    // Vote: re-check completion. Spectators don't vote at all — they're
+    // skipped entirely from the resolve check.
+    if (this.phase === "vote") {
+      const blockers = this.players.filter((q) => q.connected && !q.spectating);
+      if (blockers.length > 0 && blockers.every((q) => q.vote != null)) {
         this.resolveAndReveal();
       }
     }

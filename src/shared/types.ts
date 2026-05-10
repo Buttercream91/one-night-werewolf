@@ -167,6 +167,23 @@ export interface PrivateView {
   userNotes: string[];
   // The current night prompt for this player (if any).
   prompt?: NightPrompt;
+  // Only populated when this player is a spectator — gives them full visibility
+  // into every active player's current role and personal notes, refreshed on
+  // every broadcast. Active players never receive this field.
+  spectatorVision?: SpectatorVision;
+}
+
+// Live snapshot of the table that spectators see. Updates with every
+// broadcast so role swaps (Robber, Troublemaker, Drunk) appear in real time.
+export interface SpectatorVision {
+  players: Array<{
+    id: string;
+    currentRole: Role;
+    originalRole: Role;
+    notes: NightNote[];
+    userNotes: string[];
+  }>;
+  centerCards: Role[];
 }
 
 export type NightNote =
@@ -239,7 +256,10 @@ export interface ClientToServer {
     cb: (res: { ok: true; playerId: string } | { ok: false; error: string }) => void,
   ) => void;
   "room:leave": () => void;
-  "room:spectate": () => void;
+  // Toggle this player's spectating status. In lobby phase, both directions
+  // work (player picks whether to play or watch). Mid-game, only true is
+  // honoured — once the deck is dealt, you can step out but you can't step in.
+  "room:spectate": (payload: { spectating: boolean }) => void;
   "lobby:setRoles": (payload: { roles: Role[] }) => void;
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;

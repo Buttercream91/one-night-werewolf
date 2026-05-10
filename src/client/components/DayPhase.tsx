@@ -25,6 +25,10 @@ export function DayPhase({ room, me }: Props) {
   // De-duplicated roles in this round's deck, kept in the deck's order so the
   // wolves come first.
   const deckRoles = Array.from(new Set(room.selectedRoles));
+  // Spectators don't appear in the player tile grid — they're not part of
+  // the round and can't be voted for, accused, or held responsible for ready.
+  const activePlayers = room.players.filter((p) => !p.spectating);
+  const activeConnected = activePlayers.filter((p) => p.connected);
 
   return (
     <div className="space-y-6">
@@ -48,7 +52,7 @@ export function DayPhase({ room, me }: Props) {
           <div className="panel">
             <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">Players</h3>
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {room.players.map((p) => {
+              {activePlayers.map((p) => {
                 const ready = (room.readyPlayerIds ?? []).includes(p.id);
                 const accusationsAgainst = accusations.filter((a) => a.targetId === p.id);
                 const myAccusationOnP = accusationsAgainst.find((a) => a.accuserId === me.myId);
@@ -116,8 +120,10 @@ export function DayPhase({ room, me }: Props) {
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <span className="text-xs text-slate-400">
-                {(room.readyPlayerIds ?? []).length}/
-                {room.players.filter((p) => p.connected).length} ready
+                {(room.readyPlayerIds ?? []).filter((id) =>
+                  activeConnected.some((p) => p.id === id),
+                ).length}
+                /{activeConnected.length} ready
               </span>
               <button
                 className={isReady ? "btn-ghost" : "btn-primary"}
