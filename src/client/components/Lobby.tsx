@@ -100,11 +100,16 @@ export function Lobby({ room, me }: Props) {
 
       <NarratorPicker />
 
-      <div className="panel">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="heading text-xl text-indigo-200">Roles in deck</h2>
-            <p className="text-sm text-slate-400">
+      <details className="panel group">
+        <summary className="flex items-center justify-between gap-3 cursor-pointer list-none">
+          <div className="flex-1 min-w-0">
+            <h2 className="heading text-xl text-indigo-200 flex items-center gap-2">
+              <span className="text-slate-400 text-sm transition-transform group-open:rotate-90">
+                ▶
+              </span>
+              Roles in deck
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">
               Pick exactly{" "}
               <span className={room.selectedRoles.length === targetCount ? "text-emerald-300" : "text-amber-300"}>
                 {targetCount}
@@ -114,11 +119,18 @@ export function Lobby({ room, me }: Props) {
             </p>
           </div>
           {isHost && (
-            <button onClick={randomise} className="btn-ghost text-sm">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                randomise();
+              }}
+              className="btn-ghost text-sm"
+            >
               Randomise
             </button>
           )}
-        </div>
+        </summary>
 
         <ul className="mt-4 grid lg:grid-cols-2 gap-3">
           {ALL_ROLES.map((role) => {
@@ -180,7 +192,7 @@ export function Lobby({ room, me }: Props) {
             );
           })}
         </ul>
-      </div>
+      </details>
 
       <div className="panel flex flex-col sm:flex-row sm:items-end gap-4">
         <label className="flex-1">
@@ -245,6 +257,8 @@ export function Lobby({ room, me }: Props) {
 
 function NarratorPicker() {
   const [pick, setPick] = useState<string>(() => loadNarrator() ?? DEFAULT_VOICE_PACK);
+  const pickedLabel =
+    VOICE_PACKS.find((p) => p.id === pick)?.label ?? pick;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   if (audioRef.current === null && typeof Audio !== "undefined") {
@@ -262,12 +276,20 @@ function NarratorPicker() {
   }
 
   return (
-    <div className="panel">
-      <h2 className="heading text-xl text-indigo-200">Your narrator</h2>
-      <p className="text-sm text-slate-400 mt-1">
-        Pick the voice you want to hear during the night. Saved on this device — every player
-        picks their own.
-      </p>
+    <details className="panel group">
+      <summary className="cursor-pointer list-none">
+        <h2 className="heading text-xl text-indigo-200 flex items-center gap-2">
+          <span className="text-slate-400 text-sm transition-transform group-open:rotate-90">
+            ▶
+          </span>
+          Your narrator
+          <span className="ml-auto text-sm text-slate-300 font-normal">{pickedLabel}</span>
+        </h2>
+        <p className="text-sm text-slate-400 mt-1">
+          Pick the voice you want to hear during the night. Saved on this device — every player
+          picks their own.
+        </p>
+      </summary>
       <ul className="mt-4 grid sm:grid-cols-2 gap-2">
         {VOICE_PACKS.map((pack) => {
           const mine = pick === pack.id;
@@ -303,7 +325,7 @@ function NarratorPicker() {
           );
         })}
       </ul>
-    </div>
+    </details>
   );
 }
 
