@@ -134,6 +134,15 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:setColor", ({ color }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof color !== "string") return;
+    const result = room.setPlayerColor(attachedPlayerId, color);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("lobby:ready", ({ ready }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

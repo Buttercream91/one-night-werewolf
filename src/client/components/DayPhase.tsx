@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
+import type { Accusation, PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
 import { ROLE_META } from "../../shared/types.js";
-import { playerColor } from "../playerColor.js";
+import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { useCountdown } from "../useCountdown.js";
+import { useSpeakingLevel } from "../webrtc.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
@@ -53,73 +54,22 @@ export function DayPhase({ room, me }: Props) {
           <div className="panel">
             <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">Players</h3>
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {activePlayers.map((p) => {
-                const ready = (room.readyPlayerIds ?? []).includes(p.id);
-                const accusationsAgainst = accusations.filter((a) => a.targetId === p.id);
-                const myAccusationOnP = accusationsAgainst.find((a) => a.accuserId === me.myId);
-                const isOpen = pickingFor === p.id;
-                const nameCls = playerColor(p.id, room.players);
-                return (
-                  <li
-                    key={p.id}
-                    className={`rounded-md border px-3 py-3 text-sm ${
-                      p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={`font-medium ${nameCls}`}>{p.name}</span>
-                      <div className="flex items-center gap-1">
-                        {ready && <span className="text-xs text-emerald-300">ready</span>}
-                        <PlayerMenu target={p} room={room} myId={me.myId} where="game" />
-                      </div>
-                    </div>
-                    {accusationsAgainst.length > 0 && (
-                      <ul className="mt-1.5 space-y-0.5">
-                        {accusationsAgainst.map((a) => {
-                          const accuser = room.players.find((x) => x.id === a.accuserId);
-                          const accuserCls = playerColor(a.accuserId, room.players);
-                          return (
-                            <li key={a.accuserId} className={`text-xs ${accuserCls}`}>
-                              {accuser?.name ?? "?"} accuses {p.name} of being{" "}
-                              <span className="font-medium">{ROLE_META[a.role].label}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    <div className="mt-2">
-                      {isOpen ? (
-                        <AccusePicker
-                          deckRoles={deckRoles}
-                          onPick={(role) => {
-                            send.accuse(p.id, role);
-                            setPickingFor(null);
-                          }}
-                          onClose={() => setPickingFor(null)}
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <button
-                            className="text-xs text-indigo-300 hover:text-indigo-200 underline"
-                            onClick={() => setPickingFor(p.id)}
-                          >
-                            {myAccusationOnP ? "Change" : "Accuse"}
-                          </button>
-                          {myAccusationOnP && (
-                            <button
-                              className="text-xs text-slate-400 hover:text-slate-300"
-                              onClick={() => send.accuse(p.id, null)}
-                              title="Clear my accusation against this player"
-                            >
-                              clear
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+              {activePlayers.map((p) => (
+                <DayPlayerTile
+                  key={p.id}
+                  player={p}
+                  ready={(room.readyPlayerIds ?? []).includes(p.id)}
+                  accusationsAgainst={accusations.filter((a) => a.targetId === p.id)}
+                  myAccusationOnP={accusations.find(
+                    (a) => a.accuserId === me.myId && a.targetId === p.id,
+                  )}
+                  pickingFor={pickingFor}
+                  setPickingFor={setPickingFor}
+                  deckRoles={deckRoles}
+                  room={room}
+                  me={me}
+                />
+              ))}
             </ul>
 
             <div className="mt-6 flex items-center justify-end gap-3">
@@ -153,6 +103,92 @@ export function DayPhase({ room, me }: Props) {
 
       <CenterCards me={me} mode="view" selected={[]} setSelected={() => {}} />
     </div>
+  );
+}
+
+function DayPlayerTile({
+  player,
+  ready,
+  accusationsAgainst,
+  myAccusationOnP,
+  pickingFor,
+  setPickingFor,
+  deckRoles,
+  room,
+  me,
+}: {
+  player: PublicPlayer;
+  ready: boolean;
+  accusationsAgainst: Accusation[];
+  myAccusationOnP: Accusation | undefined;
+  pickingFor: string | null;
+  setPickingFor: (id: string | null) => void;
+  deckRoles: Role[];
+  room: PublicRoom;
+  me: PrivateView;
+}) {
+  const level = useSpeakingLevel(player.id);
+  const ring = speakingRingClass(level);
+  const nameCls = playerColor(player.id, room.players);
+  const isOpen = pickingFor === player.id;
+  return (
+    <li
+      className={`rounded-md border px-3 py-3 text-sm transition-shadow ${
+        player.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900"
+      } ${ring}`}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span className={`font-medium ${nameCls}`}>{player.name}</span>
+        <div className="flex items-center gap-1">
+          {ready && <span className="text-xs text-emerald-300">ready</span>}
+          <PlayerMenu target={player} room={room} myId={me.myId} where="game" />
+        </div>
+      </div>
+      {accusationsAgainst.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {accusationsAgainst.map((a) => {
+            const accuser = room.players.find((x) => x.id === a.accuserId);
+            const accuserCls = playerColor(a.accuserId, room.players);
+            return (
+              <li key={a.accuserId} className={`text-xs ${accuserCls}`}>
+                {accuser?.name ?? "?"} accuses {player.name} of being{" "}
+                <span className="font-medium">{ROLE_META[a.role].label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="mt-2">
+        {isOpen ? (
+          <AccusePicker
+            deckRoles={deckRoles}
+            onPick={(role) => {
+              send.accuse(player.id, role);
+              setPickingFor(null);
+            }}
+            onClose={() => setPickingFor(null)}
+          />
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs text-indigo-300 hover:text-indigo-200 underline"
+              onClick={() => setPickingFor(player.id)}
+            >
+              {myAccusationOnP ? "Change" : "Accuse"}
+            </button>
+            {myAccusationOnP && (
+              <button
+                className="text-xs text-slate-400 hover:text-slate-300"
+                onClick={() => send.accuse(player.id, null)}
+                title="Clear my accusation against this player"
+              >
+                clear
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
   );
 }
 

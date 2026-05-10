@@ -34,6 +34,10 @@ export interface PublicPlayer {
   // peer connections. Other clients only initiate WebRTC offers to peers
   // whose hasMic is true; this avoids racing with mic-permission flow.
   hasMic?: boolean;
+  // The player's display color id (one of PLAYER_COLOR_IDS). The actual
+  // Tailwind classes live client-side in playerColor.ts so the palette can
+  // be tuned without server changes.
+  color?: string;
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
@@ -286,6 +290,9 @@ export interface ClientToServer {
   "room:spectate": (payload: { spectating: boolean }) => void;
   "lobby:setRoles": (payload: { roles: Role[] }) => void;
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
+  // Pick a color from PLAYER_COLOR_IDS. Server rejects if the color is
+  // already used by another player in the room.
+  "lobby:setColor": (payload: { color: string }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
   // Host force-spectates a player (spectating=true) or releases them
@@ -414,6 +421,24 @@ export const ROLE_META: Record<Role, RoleMeta> = {
 };
 
 export const ALL_ROLES: Role[] = Object.keys(ROLE_META) as Role[];
+
+// Identifiers for the available player colors. The Tailwind classes that map
+// to each id live in client/playerColor.ts so we don't pull DOM-specific
+// strings into the server. Order is the auto-assignment preference order:
+// new players get the first id not already taken in the room.
+export const PLAYER_COLOR_IDS = [
+  "sky",
+  "fuchsia",
+  "lime",
+  "orange",
+  "cyan",
+  "violet",
+  "pink",
+  "yellow",
+  "teal",
+  "red",
+] as const;
+export type PlayerColorId = (typeof PLAYER_COLOR_IDS)[number];
 
 // Voice packs available for the night narration. The id matches the folder
 // under public/voice/. To add a pack, generate the audio (npm run voice:gen)

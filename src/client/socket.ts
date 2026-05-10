@@ -25,6 +25,7 @@ export function joinRoom(
 export const send = {
   setRoles: (roles: Role[]) => socket.emit("lobby:setRoles", { roles }),
   setDaySeconds: (seconds: number) => socket.emit("lobby:setDaySeconds", { seconds }),
+  setColor: (color: string) => socket.emit("lobby:setColor", { color }),
   lobbyReady: (ready: boolean) => socket.emit("lobby:ready", { ready }),
   kick: (playerId: string) => socket.emit("lobby:kick", { playerId }),
   forceSpectate: (playerId: string, spectating: boolean) =>

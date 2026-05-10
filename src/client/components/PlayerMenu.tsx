@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PublicPlayer, PublicRoom } from "../../shared/types.js";
 import { send } from "../socket.js";
 import {
@@ -27,13 +28,42 @@ interface Props {
 
 export function PlayerMenu({ target, room, myId, where }: Props) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  // Click outside closes the menu.
+  // Position the menu under-and-right-aligned with the trigger button. Recompute
+  // on open and when the layout shifts (scroll / resize) so the menu tracks the
+  // tile if the page reflows beneath it.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function reposition() {
+      const btn = buttonRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuWidth = 208; // matches w-52
+      const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, r.right - menuWidth));
+      const top = r.bottom + 4;
+      setPos({ top, left });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  // Click outside closes the menu. We listen for clicks on either the button or
+  // the menu (now in a portal, so the inline `relative` wrapper doesn't help).
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -46,9 +76,85 @@ export function PlayerMenu({ target, room, myId, where }: Props) {
   const targetIsForcedSpec = !!target.forcedSpectating;
   const targetIsSpec = !!target.spectating;
 
+  const menu =
+    open && pos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[1000] w-52 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {!isMe && <PeerVolumeRow targetId={target.id} />}
+            {!isMe && <Sep />}
+
+            {isMe && (
+              <>
+                {!target.isHost && !targetIsForcedSpec && (
+                  <Item
+                    label={targetIsSpec ? "Join the game" : "Switch to spectator"}
+                    onClick={() => {
+                      send.spectate(!targetIsSpec);
+                      setOpen(false);
+                    }}
+                  />
+                )}
+                {targetIsForcedSpec && <ItemDisabled label="Spectator (locked by host)" />}
+              </>
+            )}
+
+            {iAmHost && !isMe && (
+              <>
+                {isMe ? null : <Sep />}
+                <Item
+                  label={targetIsForcedSpec ? "Release from spectator" : "Move to spectator"}
+                  onClick={() => {
+                    send.forceSpectate(target.id, !targetIsForcedSpec);
+                    setOpen(false);
+                  }}
+                  title={
+                    targetIsForcedSpec
+                      ? "Lift the spectator lock — the player can opt back in"
+                      : "Move them to spectator. Only you can release them."
+                  }
+                />
+                {!targetIsHost && (
+                  <Item
+                    label="Promote to host"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Promote ${target.name} to host? You'll lose host controls and become a regular player.`,
+                        )
+                      ) {
+                        send.promoteHost(target.id);
+                        setOpen(false);
+                      }
+                    }}
+                  />
+                )}
+                {where === "lobby" && (
+                  <Item
+                    label="Kick from room"
+                    destructive
+                    onClick={() => {
+                      if (confirm(`Kick ${target.name}? The room code will change.`)) {
+                        send.kick(target.id);
+                        setOpen(false);
+                      }
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         className="text-slate-400 hover:text-slate-200 px-1 leading-none"
         onClick={(e) => {
           e.preventDefault();
@@ -59,79 +165,8 @@ export function PlayerMenu({ target, room, myId, where }: Props) {
       >
         ⋯
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100">
-          {/* Volume / mute (local device only — controls our remote audio
-              element for this peer; harmless before voice chat is wired). */}
-          {!isMe && (
-            <PeerVolumeRow targetId={target.id} />
-          )}
-          {!isMe && <Sep />}
-
-          {isMe && (
-            <>
-              {!target.isHost && !targetIsForcedSpec && (
-                <Item
-                  label={targetIsSpec ? "Join the game" : "Switch to spectator"}
-                  onClick={() => {
-                    send.spectate(!targetIsSpec);
-                    setOpen(false);
-                  }}
-                />
-              )}
-              {targetIsForcedSpec && (
-                <ItemDisabled label="Spectator (locked by host)" />
-              )}
-            </>
-          )}
-
-          {iAmHost && !isMe && (
-            <>
-              {isMe ? null : <Sep />}
-              <Item
-                label={targetIsForcedSpec ? "Release from spectator" : "Move to spectator"}
-                onClick={() => {
-                  send.forceSpectate(target.id, !targetIsForcedSpec);
-                  setOpen(false);
-                }}
-                title={
-                  targetIsForcedSpec
-                    ? "Lift the spectator lock — the player can opt back in"
-                    : "Move them to spectator. Only you can release them."
-                }
-              />
-              {!targetIsHost && (
-                <Item
-                  label="Promote to host"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `Promote ${target.name} to host? You'll lose host controls and become a regular player.`,
-                      )
-                    ) {
-                      send.promoteHost(target.id);
-                      setOpen(false);
-                    }
-                  }}
-                />
-              )}
-              {where === "lobby" && (
-                <Item
-                  label="Kick from room"
-                  destructive
-                  onClick={() => {
-                    if (confirm(`Kick ${target.name}? The room code will change.`)) {
-                      send.kick(target.id);
-                      setOpen(false);
-                    }
-                  }}
-                />
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
+      {menu}
+    </>
   );
 }
 

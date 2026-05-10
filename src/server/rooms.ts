@@ -15,7 +15,7 @@ import type {
   ServerToClient,
   WinnerSide,
 } from "../shared/types.js";
-import { NIGHT_ORDER, ROLE_META } from "../shared/types.js";
+import { NIGHT_ORDER, PLAYER_COLOR_IDS, ROLE_META } from "../shared/types.js";
 import {
   applyNightAction,
   defaultActionFor,
@@ -50,6 +50,7 @@ export interface ServerPlayer {
   spectating?: boolean; // Player tapped "Back to lobby" during the round.
   forcedSpectating?: boolean; // Host moved them to spectator; only host releases.
   hasMic?: boolean; // Voice-chat presence flag — set after the client gets mic.
+  color?: string; // PlayerColorId — auto-assigned on join, changeable in lobby.
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -113,9 +114,18 @@ export class Room {
       notes: [],
       userNotes: [],
       spectating: opts.spectating ?? false,
+      color: this.pickFreeColor(),
     };
     this.players.push(player);
     return player;
+  }
+
+  // Pick the first PLAYER_COLOR_ID not already in use. If all are taken
+  // (only possible with >10 players in the room), fall back to the first id
+  // — duplicates are tolerated past the palette size.
+  private pickFreeColor(): string {
+    const used = new Set(this.players.map((p) => p.color).filter(Boolean) as string[]);
+    return PLAYER_COLOR_IDS.find((c) => !used.has(c)) ?? PLAYER_COLOR_IDS[0];
   }
 
   removePlayer(playerId: string) {
@@ -472,6 +482,7 @@ export class Room {
         spectating: p.spectating || undefined,
         forcedSpectating: p.forcedSpectating || undefined,
         hasMic: p.hasMic || undefined,
+        color: p.color,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
@@ -579,6 +590,20 @@ export class Room {
 
   setCurrentRole(playerId: string, role: Role) {
     this.currentRoles.set(playerId, role);
+  }
+
+  setPlayerColor(playerId: string, color: string): ActionResult {
+    if (this.phase !== "lobby") return { ok: false, error: "Can only change color in the lobby" };
+    if (!(PLAYER_COLOR_IDS as readonly string[]).includes(color)) {
+      return { ok: false, error: "Unknown color" };
+    }
+    if (this.players.some((p) => p.id !== playerId && p.color === color)) {
+      return { ok: false, error: "That color is already taken" };
+    }
+    const p = this.players.find((p) => p.id === playerId);
+    if (!p) return { ok: false, error: "Unknown player" };
+    p.color = color;
+    return { ok: true };
   }
 
   setLobbyReady(playerId: string, ready: boolean) {

@@ -1,8 +1,16 @@
 import { useMemo, useRef, useState } from "react";
-import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
-import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
+import type { PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
+import {
+  ALL_ROLES,
+  DEFAULT_VOICE_PACK,
+  PLAYER_COLOR_IDS,
+  ROLE_META,
+  VOICE_PACKS,
+} from "../../shared/types.js";
+import { playerColor, speakingRingClass, swatchClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
+import { useSpeakingLevel } from "../webrtc.js";
 import { CopyableCode } from "./CopyableCode.js";
 import { PlayerMenu } from "./PlayerMenu.js";
 import { ROLE_IMAGE } from "./RoleCard.js";
@@ -77,36 +85,15 @@ export function Lobby({ room, me }: Props) {
           </p>
         ) : (
           <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {activePlayers.map((p) => {
-              const ready = lobbyReadyIds.includes(p.id);
-              const isMe = me?.myId === p.id;
-              return (
-                <li
-                  key={p.id}
-                  className={`rounded-md border px-3 py-2 text-sm ${
-                    p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">
-                      {p.name}
-                      {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {p.isHost ? (
-                        <span className="text-xs text-amber-300">host</span>
-                      ) : ready ? (
-                        <span className="text-xs text-emerald-300">ready</span>
-                      ) : null}
-                      {me && (
-                        <PlayerMenu target={p} room={room} myId={me.myId} where="lobby" />
-                      )}
-                    </div>
-                  </div>
-                  {!p.connected && <span className="text-xs">offline</span>}
-                </li>
-              );
-            })}
+            {activePlayers.map((p) => (
+              <LobbyPlayerTile
+                key={p.id}
+                player={p}
+                room={room}
+                me={me}
+                ready={lobbyReadyIds.includes(p.id)}
+              />
+            ))}
           </ul>
         )}
       </div>
@@ -121,33 +108,9 @@ export function Lobby({ room, me }: Props) {
           <p className="mt-3 text-sm text-slate-500 italic">No one is spectating.</p>
         ) : (
           <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {spectators.map((p) => {
-              const isMe = me?.myId === p.id;
-              return (
-                <li
-                  key={p.id}
-                  className={`rounded-md border px-3 py-2 text-sm ${
-                    p.connected ? "border-slate-800 bg-slate-900/60" : "border-slate-800 bg-slate-900 text-slate-500"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-300">
-                      {p.name}
-                      {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
-                      {p.forcedSpectating && (
-                        <span className="ml-1 text-xs text-amber-400" title="Set to spectator by the host">
-                          🔒
-                        </span>
-                      )}
-                    </span>
-                    {me && (
-                      <PlayerMenu target={p} room={room} myId={me.myId} where="lobby" />
-                    )}
-                  </div>
-                  {!p.connected && <span className="text-xs">offline</span>}
-                </li>
-              );
-            })}
+            {spectators.map((p) => (
+              <LobbySpectatorTile key={p.id} player={p} room={room} me={me} />
+            ))}
           </ul>
         )}
       </div>
@@ -322,6 +285,110 @@ export function Lobby({ room, me }: Props) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LobbyPlayerTile({
+  player,
+  room,
+  me,
+  ready,
+}: {
+  player: PublicPlayer;
+  room: PublicRoom;
+  me: PrivateView | null;
+  ready: boolean;
+}) {
+  const isMe = me?.myId === player.id;
+  const level = useSpeakingLevel(player.id);
+  const ring = speakingRingClass(level);
+  const nameCls = playerColor(player.id, room.players);
+  return (
+    <li
+      className={`rounded-md border px-3 py-2 text-sm transition-shadow ${
+        player.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
+      } ${ring}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className={`font-medium ${nameCls}`}>
+          {player.name}
+          {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
+        </span>
+        <div className="flex items-center gap-1">
+          {player.isHost ? (
+            <span className="text-xs text-amber-300">host</span>
+          ) : ready ? (
+            <span className="text-xs text-emerald-300">ready</span>
+          ) : null}
+          {me && <PlayerMenu target={player} room={room} myId={me.myId} where="lobby" />}
+        </div>
+      </div>
+      {!player.connected && <span className="text-xs">offline</span>}
+      {isMe && <ColorPicker room={room} />}
+    </li>
+  );
+}
+
+function LobbySpectatorTile({
+  player,
+  room,
+  me,
+}: {
+  player: PublicPlayer;
+  room: PublicRoom;
+  me: PrivateView | null;
+}) {
+  const isMe = me?.myId === player.id;
+  const level = useSpeakingLevel(player.id);
+  const ring = speakingRingClass(level);
+  const nameCls = playerColor(player.id, room.players);
+  return (
+    <li
+      className={`rounded-md border px-3 py-2 text-sm transition-shadow ${
+        player.connected ? "border-slate-800 bg-slate-900/60" : "border-slate-800 bg-slate-900 text-slate-500"
+      } ${ring}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className={`font-medium ${nameCls}`}>
+          {player.name}
+          {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
+          {player.forcedSpectating && (
+            <span className="ml-1 text-xs text-amber-400" title="Set to spectator by the host">
+              🔒
+            </span>
+          )}
+        </span>
+        {me && <PlayerMenu target={player} room={room} myId={me.myId} where="lobby" />}
+      </div>
+      {!player.connected && <span className="text-xs">offline</span>}
+      {isMe && <ColorPicker room={room} />}
+    </li>
+  );
+}
+
+function ColorPicker({ room }: { room: PublicRoom }) {
+  const taken = new Set(
+    room.players.map((p) => p.color).filter((c): c is string => !!c),
+  );
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {PLAYER_COLOR_IDS.map((id) => {
+        const used = taken.has(id);
+        return (
+          <button
+            key={id}
+            disabled={used}
+            onClick={() => send.setColor(id)}
+            title={used ? `${id} (taken)` : `Pick ${id}`}
+            className={`h-5 w-5 rounded-full border ${swatchClass(id)} ${
+              used
+                ? "opacity-30 cursor-not-allowed"
+                : "border-slate-200/40 hover:scale-110 transition-transform"
+            }`}
+          />
+        );
+      })}
     </div>
   );
 }

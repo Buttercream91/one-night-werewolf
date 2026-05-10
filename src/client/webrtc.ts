@@ -35,6 +35,84 @@ let myPlayerId: string | null = null;
 let micEnabledState = false;
 const listeners = new Set<() => void>();
 
+// Active-speaker analysis. One AudioContext for the page, one AnalyserNode per
+// peer (and one for our local mic). The animation loop reads byte frequency
+// data and stores a 0..1 level per playerId. Components subscribe via
+// useSpeakingLevel(playerId) and re-render when their level meaningfully
+// changes.
+let audioCtx: AudioContext | null = null;
+type AnalyzerEntry = {
+  source: MediaStreamAudioSourceNode;
+  analyser: AnalyserNode;
+  rafId: number;
+};
+const analyzers = new Map<string, AnalyzerEntry>();
+const speakingLevels = new Map<string, number>();
+const speakingListeners = new Set<() => void>();
+
+function getAudioCtx(): AudioContext | null {
+  if (audioCtx) return audioCtx;
+  const Ctor =
+    (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+      .AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  audioCtx = new Ctor();
+  return audioCtx;
+}
+
+function startAnalyzer(playerId: string, stream: MediaStream) {
+  if (analyzers.has(playerId)) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  let source: MediaStreamAudioSourceNode;
+  try {
+    source = ctx.createMediaStreamSource(stream);
+  } catch {
+    return;
+  }
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.5;
+  source.connect(analyser);
+  // Don't connect the analyser onward — playback comes from the
+  // <audio> element directly. Connecting to ctx.destination would
+  // double-play.
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let lastNotified = 0;
+  function tick() {
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    const avg = sum / data.length / 255;
+    speakingLevels.set(playerId, avg);
+    if (Math.abs(avg - lastNotified) > 0.02) {
+      lastNotified = avg;
+      for (const fn of speakingListeners) fn();
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  let rafId = requestAnimationFrame(tick);
+  analyzers.set(playerId, { source, analyser, rafId });
+}
+
+function stopAnalyzer(playerId: string) {
+  const a = analyzers.get(playerId);
+  if (!a) return;
+  cancelAnimationFrame(a.rafId);
+  try {
+    a.source.disconnect();
+  } catch {}
+  try {
+    a.analyser.disconnect();
+  } catch {}
+  analyzers.delete(playerId);
+  if (speakingLevels.has(playerId)) {
+    speakingLevels.delete(playerId);
+    for (const fn of speakingListeners) fn();
+  }
+}
+
 function notify() {
   for (const fn of listeners) fn();
 }
@@ -74,6 +152,8 @@ function getOrCreatePeer(peerId: string): PeerEntry {
     audioEl.play().catch(() => {
       // Autoplay can be blocked until first user gesture; ignore.
     });
+    // Start watching this peer's volume for the active-speaker indicator.
+    startAnalyzer(peerId, ev.streams[0]);
   };
 
   pc.onicecandidate = (ev) => {
@@ -107,6 +187,7 @@ function destroyPeer(peerId: string) {
     e.audioEl.remove();
   }
   peers.delete(peerId);
+  stopAnalyzer(peerId);
   notify();
 }
 
@@ -148,12 +229,15 @@ export async function startMic(): Promise<{ ok: true } | { ok: false; error: str
     }
   }
   micEnabledState = true;
+  // Watch our own mic level so our own tile pulses when we talk.
+  if (myPlayerId) startAnalyzer(myPlayerId, localStream);
   socket.emit("audio:setReady", { ready: true });
   notify();
   return { ok: true };
 }
 
 export function stopMic(): void {
+  if (myPlayerId) stopAnalyzer(myPlayerId);
   if (localStream) {
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
@@ -332,4 +416,24 @@ export function useMicState(): { enabled: boolean } {
     };
   }, []);
   return { enabled: micEnabledState };
+}
+
+// Live volume level for a player (0..1). Returns 0 when no analyzer is
+// running for that player (no mic, not connected, not yet receiving audio).
+// Re-renders only when the level changes by more than ~2%, so a tile that
+// isn't speaking doesn't churn render every frame.
+export function useSpeakingLevel(playerId: string | undefined): number {
+  const [level, setLevel] = useState(() =>
+    playerId ? (speakingLevels.get(playerId) ?? 0) : 0,
+  );
+  useEffect(() => {
+    if (!playerId) return;
+    const fn = () => setLevel(speakingLevels.get(playerId) ?? 0);
+    speakingListeners.add(fn);
+    fn();
+    return () => {
+      speakingListeners.delete(fn);
+    };
+  }, [playerId]);
+  return level;
 }
