@@ -23,6 +23,10 @@ export interface PublicPlayer {
   name: string;
   connected: boolean;
   isHost: boolean;
+  // Player chose "Back to lobby" during an active game. Their card stays in
+  // play (deck size is fixed at deal time), but they no longer act, vote, or
+  // hold up phase advancement. Resets at game start / reset to lobby.
+  spectating?: boolean;
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
@@ -215,6 +219,7 @@ export interface ClientToServer {
     cb: (res: { ok: true; playerId: string } | { ok: false; error: string }) => void,
   ) => void;
   "room:leave": () => void;
+  "room:spectate": () => void;
   "lobby:setRoles": (payload: { roles: Role[] }) => void;
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;

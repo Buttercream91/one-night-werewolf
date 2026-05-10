@@ -74,6 +74,14 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     detach();
   });
 
+  socket.on("room:spectate", () => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setSpectator(attachedPlayerId);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("disconnect", () => {
     if (!attachedRoomCode || !attachedPlayerId) return;
     const room = rooms.get(attachedRoomCode);

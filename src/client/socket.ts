@@ -36,6 +36,7 @@ export const send = {
   vote: (targetId: string | "no_kill") => socket.emit("vote:cast", { targetId }),
   reset: () => socket.emit("room:reset"),
   leave: () => socket.emit("room:leave"),
+  spectate: () => socket.emit("room:spectate"),
   addNote: (text: string) => socket.emit("note:add", { text }),
   removeNote: (index: number) => socket.emit("note:remove", { index }),
 };

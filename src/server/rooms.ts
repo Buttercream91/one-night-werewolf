@@ -47,6 +47,7 @@ export interface ServerPlayer {
   vote?: string | null;
   ready?: boolean; // Day phase "ready to vote"
   lobbyReady?: boolean; // Lobby "ready for host to start"
+  spectating?: boolean; // Player tapped "Back to lobby" during the round.
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -177,6 +178,7 @@ export class Room {
       p.vote = null;
       p.ready = false;
       p.lobbyReady = false;
+      p.spectating = false;
     });
     this.centerCards = deck.slice(numPlayers, numPlayers + 3);
     this.originalCenterCards = this.centerCards.slice();
@@ -208,6 +210,7 @@ export class Room {
       p.vote = null;
       p.ready = false;
       p.lobbyReady = false;
+      p.spectating = false;
     });
     this.centerCards = [];
     this.originalCenterCards = [];
@@ -403,6 +406,7 @@ export class Room {
         name: p.name,
         connected: p.connected,
         isHost: p.id === this.hostId,
+        spectating: p.spectating || undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
@@ -499,6 +503,54 @@ export class Room {
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return;
     p.lobbyReady = ready;
+  }
+
+  // Move a player to spectator mode for the rest of this round. Their card
+  // stays in play (the deck was fixed at deal time and other roles' info may
+  // already reference theirs), but they stop acting, voting, or holding up
+  // phase advancement. The flag clears on game start / reset to lobby.
+  setSpectator(playerId: string): ActionResult {
+    if (this.phase === "lobby") return { ok: false, error: "Already in the lobby" };
+    const p = this.players.find((p) => p.id === playerId);
+    if (!p) return { ok: false, error: "Unknown player" };
+    if (p.spectating) return { ok: true };
+    p.spectating = true;
+    p.prompt = undefined;
+    // If they had a pending night action, default it now so the step doesn't
+    // wait on them and other roles' visible info stays consistent.
+    if (this.phase === "night" && this.nightStep && this.nightPendingActors.has(playerId)) {
+      const effectiveWolves = this.players.filter(
+        (q) =>
+          q.originalRole === "werewolf" ||
+          (q.originalRole === "doppelganger" && q.doppelgangerCopied === "werewolf"),
+      ).length;
+      const isLoneWolf = effectiveWolves === 1;
+      const fallbackTargetId =
+        this.nightStep === "doppelganger"
+          ? this.players.find((q) => q.id !== p.id)?.id
+          : undefined;
+      const action = defaultActionFor(this.nightStep, isLoneWolf, fallbackTargetId);
+      applyNightAction(this, p, action);
+      this.nightPendingActors.delete(playerId);
+    }
+    // Day: count them as ready so the day doesn't sit waiting on them.
+    if (this.phase === "day") {
+      p.ready = true;
+      if (this.players.filter((q) => q.connected).every((q) => q.ready)) {
+        this.beginVote();
+      }
+    }
+    // Vote: auto-abstain so their vote doesn't block resolveAndReveal.
+    if (this.phase === "vote" && p.vote == null) {
+      p.vote = "no_kill";
+      this.actionLog.push({ kind: "vote", voterId: playerId, targetId: "no_kill" });
+      if (this.players.every((q) => q.vote != null)) {
+        this.resolveAndReveal();
+      }
+    }
+    // Clear any accusation they made — spectators shouldn't keep asserting things.
+    this.accusations.delete(playerId);
+    return { ok: true };
   }
 
   // Host kicks a player from the lobby. Removes them from the room, notifies

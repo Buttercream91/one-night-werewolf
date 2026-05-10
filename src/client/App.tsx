@@ -4,7 +4,7 @@ import { CopyableCode } from "./components/CopyableCode.js";
 import { Game } from "./components/Game.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
-import { joinRoom, socket } from "./socket.js";
+import { joinRoom, send, socket } from "./socket.js";
 import { setServerTimeOffset } from "./useCountdown.js";
 import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
 
@@ -126,6 +126,9 @@ export function App() {
               <span className="text-slate-400">
                 Room <CopyableCode code={room.code} className="text-slate-100" />
               </span>
+              {room.phase !== "lobby" && me && (
+                <BackToLobbyButton room={room} myId={me.myId} />
+              )}
               <button onClick={leaveRoom} className="btn-ghost text-xs px-2 py-1">
                 Leave
               </button>
@@ -148,5 +151,29 @@ export function App() {
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
     </div>
+  );
+}
+
+function BackToLobbyButton({ room, myId }: { room: PublicRoom; myId: string }) {
+  const me = room.players.find((p) => p.id === myId);
+  if (me?.spectating) {
+    return <span className="text-xs text-slate-400">spectating</span>;
+  }
+  return (
+    <button
+      className="btn-ghost text-xs px-2 py-1"
+      onClick={() => {
+        if (
+          confirm(
+            "Step out for the rest of this round? Your card stays in the deck but you stop acting. You'll be back in the lobby when the round ends.",
+          )
+        ) {
+          send.spectate();
+        }
+      }}
+      title="Step back to spectate the rest of this round"
+    >
+      Back to lobby
+    </button>
   );
 }
