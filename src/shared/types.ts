@@ -47,6 +47,9 @@ export interface PublicRoom {
   // IDs of non-host players who pressed Ready in the lobby. Host can't start
   // until everyone else here is checked off.
   lobbyReadyIds?: string[];
+  // Host paused the round. Phase timers freeze and player actions are
+  // rejected until the host resumes. Only meaningful in night/day/vote.
+  paused?: boolean;
   // Reveal-only chronological log of every night action and the vote outcome.
   actionLog?: ActionLogEntry[];
   // Night:
@@ -225,6 +228,7 @@ export interface ClientToServer {
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
   "lobby:start": () => void;
+  "room:pause": (payload: { paused: boolean }) => void;
   "night:action": (payload: NightAction) => void;
   "day:ready": (payload: { ready: boolean }) => void;
   // targetId/role null clears this player's accusation.

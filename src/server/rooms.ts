@@ -82,6 +82,12 @@ export class Room {
   dayTimer?: NodeJS.Timeout;
   // accuserId -> accusation. At most one active per accuser.
   accusations = new Map<string, Accusation>();
+  // Paused state. While paused, both phase timers are cleared and the
+  // remaining ms (captured at pause time) is held here so resume can recreate
+  // them. Player actions (vote, ready, accuse, night) are rejected.
+  paused = false;
+  pausedNightRemainingMs?: number;
+  pausedDayRemainingMs?: number;
   winners?: WinnerSide[];
   killedIds: string[] = [];
   actionLog: ActionLogEntry[] = [];
@@ -232,6 +238,9 @@ export class Room {
       clearTimeout(this.nightStepTimer);
       this.nightStepTimer = undefined;
     }
+    this.paused = false;
+    this.pausedNightRemainingMs = undefined;
+    this.pausedDayRemainingMs = undefined;
     this.players = this.players.filter((p) => p.connected);
     if (this.hostId && !this.hasPlayer(this.hostId)) {
       this.hostId = this.players[0]?.id ?? null;
@@ -302,6 +311,7 @@ export class Room {
   // is cleared so they see "you've acted" until the step ends.
   submitNightAction(playerId: string, action: NightAction): ActionResult {
     if (this.phase !== "night") return { ok: false, error: "Not night phase" };
+    if (this.paused) return { ok: false, error: "Game is paused" };
     if (!this.nightPendingActors.has(playerId)) return { ok: false, error: "Not your turn" };
     const player = this.players.find((p) => p.id === playerId);
     if (!player) return { ok: false, error: "Unknown player" };
@@ -335,6 +345,7 @@ export class Room {
 
   setAccusation(accuserId: string, targetId: string | null, role: Role | null): ActionResult {
     if (this.phase !== "day") return { ok: false, error: "Only during the day" };
+    if (this.paused) return { ok: false, error: "Game is paused" };
     if (!this.hasPlayer(accuserId)) return { ok: false, error: "Unknown player" };
     if (targetId == null || role == null) {
       this.accusations.delete(accuserId);
@@ -350,6 +361,7 @@ export class Room {
 
   setDayReady(playerId: string, ready: boolean) {
     if (this.phase !== "day") return;
+    if (this.paused) return;
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return;
     p.ready = ready;
@@ -369,6 +381,7 @@ export class Room {
 
   castVote(playerId: string, targetId: string): ActionResult {
     if (this.phase !== "vote") return { ok: false, error: "Not voting phase" };
+    if (this.paused) return { ok: false, error: "Game is paused" };
     const voter = this.players.find((p) => p.id === playerId);
     if (!voter) return { ok: false, error: "Unknown player" };
     if (targetId !== "no_kill" && !this.hasPlayer(targetId)) {
@@ -419,6 +432,7 @@ export class Room {
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
+      paused: this.paused || undefined,
       accusations:
         this.phase === "day" || this.phase === "vote" || this.phase === "reveal"
           ? Array.from(this.accusations.values())
@@ -503,6 +517,56 @@ export class Room {
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return;
     p.lobbyReady = ready;
+  }
+
+  // Host pauses or resumes the round. Pause stops both phase timers and
+  // captures their remaining ms so resume can rebuild them. Player actions
+  // (vote, accuse, ready, night) are rejected while paused — handlers check
+  // room.paused before mutating game state.
+  setPaused(hostId: string, paused: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can pause" };
+    if (this.phase === "lobby" || this.phase === "reveal") {
+      return { ok: false, error: "Nothing to pause" };
+    }
+    if (paused === this.paused) return { ok: true };
+    if (paused) {
+      // Capture remaining time and stop the timers.
+      if (this.nightStepEndsAt && this.nightStepTimer) {
+        this.pausedNightRemainingMs = Math.max(0, this.nightStepEndsAt - Date.now());
+        clearTimeout(this.nightStepTimer);
+        this.nightStepTimer = undefined;
+        this.nightStepEndsAt = undefined;
+      }
+      if (this.dayEndsAt && this.dayTimer) {
+        this.pausedDayRemainingMs = Math.max(0, this.dayEndsAt - Date.now());
+        clearTimeout(this.dayTimer);
+        this.dayTimer = undefined;
+        this.dayEndsAt = undefined;
+      }
+      this.paused = true;
+    } else {
+      // Re-create timers using the captured remaining ms.
+      if (this.pausedNightRemainingMs != null && this.nightStep) {
+        const ms = this.pausedNightRemainingMs;
+        this.nightStepEndsAt = Date.now() + ms;
+        this.nightStepTimer = setTimeout(() => {
+          this.endNightStep();
+          this.broadcast();
+        }, ms);
+        this.pausedNightRemainingMs = undefined;
+      }
+      if (this.pausedDayRemainingMs != null) {
+        const ms = this.pausedDayRemainingMs;
+        this.dayEndsAt = Date.now() + ms;
+        this.dayTimer = setTimeout(() => {
+          this.beginVote();
+          this.broadcast();
+        }, ms + 100);
+        this.pausedDayRemainingMs = undefined;
+      }
+      this.paused = false;
+    }
+    return { ok: true };
   }
 
   // Move a player to spectator mode for the rest of this round. Their card

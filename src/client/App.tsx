@@ -126,6 +126,14 @@ export function App() {
               <span className="text-slate-400">
                 Room <CopyableCode code={room.code} className="text-slate-100" />
               </span>
+              {room.paused && (
+                <span className="text-xs uppercase tracking-wider px-2 py-1 rounded border border-amber-700 bg-amber-950/50 text-amber-300">
+                  Paused
+                </span>
+              )}
+              {room.phase !== "lobby" && room.phase !== "reveal" && me && (
+                <PauseButton room={room} myId={me.myId} />
+              )}
               {room.phase !== "lobby" && me && (
                 <BackToLobbyButton room={room} myId={me.myId} />
               )}
@@ -151,6 +159,21 @@ export function App() {
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
     </div>
+  );
+}
+
+function PauseButton({ room, myId }: { room: PublicRoom; myId: string }) {
+  const me = room.players.find((p) => p.id === myId);
+  if (!me?.isHost) return null;
+  const paused = !!room.paused;
+  return (
+    <button
+      className="btn-ghost text-xs px-2 py-1"
+      onClick={() => send.pause(!paused)}
+      title={paused ? "Resume the round" : "Pause timers and freeze player actions"}
+    >
+      {paused ? "Resume" : "Pause"}
+    </button>
   );
 }
 

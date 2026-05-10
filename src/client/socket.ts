@@ -37,6 +37,7 @@ export const send = {
   reset: () => socket.emit("room:reset"),
   leave: () => socket.emit("room:leave"),
   spectate: () => socket.emit("room:spectate"),
+  pause: (paused: boolean) => socket.emit("room:pause", { paused }),
   addNote: (text: string) => socket.emit("note:add", { text }),
   removeNote: (index: number) => socket.emit("note:remove", { index }),
 };

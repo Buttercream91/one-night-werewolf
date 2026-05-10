@@ -192,6 +192,14 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("room:pause", ({ paused }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setPaused(attachedPlayerId, !!paused);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("room:reset", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
