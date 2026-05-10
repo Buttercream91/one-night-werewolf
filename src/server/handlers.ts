@@ -134,6 +134,13 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:ready", ({ ready }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    room.setLobbyReady(attachedPlayerId, !!ready);
+    room.broadcast();
+  });
+
   socket.on("lobby:start", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

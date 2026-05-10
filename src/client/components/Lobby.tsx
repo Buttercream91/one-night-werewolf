@@ -16,10 +16,16 @@ export function Lobby({ room, me }: Props) {
     [room, me],
   );
   const targetCount = room.players.length + 3;
+  const lobbyReadyIds = room.lobbyReadyIds ?? [];
+  const everyoneReady = room.players
+    .filter((p) => !p.isHost)
+    .every((p) => lobbyReadyIds.includes(p.id));
   const valid =
     room.selectedRoles.length === targetCount &&
     room.players.length >= 3 &&
-    room.players.length <= 10;
+    room.players.length <= 10 &&
+    everyoneReady;
+  const iAmReady = !!me && lobbyReadyIds.includes(me.myId);
 
   const counts: Partial<Record<Role, number>> = {};
   for (const r of room.selectedRoles) counts[r] = (counts[r] ?? 0) + 1;
@@ -49,19 +55,28 @@ export function Lobby({ room, me }: Props) {
           </div>
         </div>
         <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {room.players.map((p) => (
-            <li
-              key={p.id}
-              className={`rounded-md border px-3 py-2 text-sm ${
-                p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
-              }`}
-            >
-              <span className="font-medium">{p.name}</span>
-              {p.isHost && <span className="ml-2 text-xs text-amber-300">host</span>}
-              {!p.connected && <span className="ml-2 text-xs">offline</span>}
-              {me?.myId === p.id && <span className="ml-2 text-xs text-indigo-300">you</span>}
-            </li>
-          ))}
+          {room.players.map((p) => {
+            const ready = lobbyReadyIds.includes(p.id);
+            return (
+              <li
+                key={p.id}
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{p.name}</span>
+                  {p.isHost ? (
+                    <span className="text-xs text-amber-300">host</span>
+                  ) : ready ? (
+                    <span className="text-xs text-emerald-300">ready</span>
+                  ) : null}
+                </div>
+                {!p.connected && <span className="text-xs">offline</span>}
+                {me?.myId === p.id && <span className="text-xs text-indigo-300">you</span>}
+              </li>
+            );
+          })}
         </ul>
       </div>
 
@@ -189,13 +204,20 @@ export function Lobby({ room, me }: Props) {
               title={
                 valid
                   ? "Start the game"
-                  : `Need ${targetCount} role cards and 3+ players to start`
+                  : !everyoneReady
+                    ? "Waiting for all players to ready up"
+                    : `Need ${targetCount} role cards and 3+ players to start`
               }
             >
               Start game
             </button>
           ) : (
-            <span className="text-sm text-slate-400">Waiting for host to start…</span>
+            <button
+              className={iAmReady ? "btn-ghost" : "btn-primary"}
+              onClick={() => send.lobbyReady(!iAmReady)}
+            >
+              {iAmReady ? "Cancel ready" : "Ready"}
+            </button>
           )}
         </div>
       </div>

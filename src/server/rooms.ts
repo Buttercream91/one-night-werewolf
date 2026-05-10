@@ -46,7 +46,8 @@ export interface ServerPlayer {
   knownCurrentRole?: Role;
   cardFaceDown?: boolean; // true after Drunk swap — player holds a card they haven't seen
   vote?: string | null;
-  ready?: boolean;
+  ready?: boolean; // Day phase "ready to vote"
+  lobbyReady?: boolean; // Lobby "ready for host to start"
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -144,6 +145,10 @@ export class Room {
         error: `Need exactly ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
       };
     }
+    const notReady = this.players.filter((p) => p.id !== this.hostId && !p.lobbyReady);
+    if (notReady.length > 0) {
+      return { ok: false, error: `Waiting on ${notReady.length} player(s) to ready up` };
+    }
     const counts = countRoles(this.selectedRoles);
     for (const [role, count] of Object.entries(counts)) {
       const max = ROLE_META[role as Role].maxCount;
@@ -168,6 +173,7 @@ export class Room {
       p.prompt = undefined;
       p.vote = null;
       p.ready = false;
+      p.lobbyReady = false;
     });
     this.centerCards = deck.slice(numPlayers, numPlayers + 3);
     this.originalCenterCards = this.centerCards.slice();
@@ -197,6 +203,7 @@ export class Room {
       p.prompt = undefined;
       p.vote = null;
       p.ready = false;
+      p.lobbyReady = false;
     });
     this.centerCards = [];
     this.originalCenterCards = [];
@@ -390,6 +397,10 @@ export class Room {
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
+      lobbyReadyIds:
+        this.phase === "lobby"
+          ? this.players.filter((p) => p.lobbyReady).map((p) => p.id)
+          : undefined,
       centerCards: isReveal ? this.centerCards : undefined,
       winners: this.winners,
       actionLog: isReveal ? this.actionLog : undefined,
@@ -459,6 +470,13 @@ export class Room {
 
   setCurrentRole(playerId: string, role: Role) {
     this.currentRoles.set(playerId, role);
+  }
+
+  setLobbyReady(playerId: string, ready: boolean) {
+    if (this.phase !== "lobby") return;
+    const p = this.players.find((p) => p.id === playerId);
+    if (!p) return;
+    p.lobbyReady = ready;
   }
 
   // Lobby: cast or change a vote for a voice pack. Defaults silently to no-op

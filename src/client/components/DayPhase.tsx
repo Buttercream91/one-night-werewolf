@@ -1,6 +1,7 @@
 import type { PrivateView, PublicRoom } from "../../shared/types.js";
 import { send } from "../socket.js";
 import { useCountdown } from "../useCountdown.js";
+import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -30,6 +31,8 @@ export function DayPhase({ room, me }: Props) {
         </div>
       </div>
 
+      <ActiveDeckPanel roles={room.selectedRoles} />
+
       <div className="grid md:grid-cols-[1fr_auto] gap-6 items-start">
         <div className="space-y-6">
           <div className="panel">
@@ -40,7 +43,7 @@ export function DayPhase({ room, me }: Props) {
                 return (
                   <li
                     key={p.id}
-                    className={`rounded-md border px-3 py-2 text-sm ${
+                    className={`rounded-md border px-3 py-3 text-sm ${
                       p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
                     }`}
                   >

@@ -43,6 +43,9 @@ export interface PublicRoom {
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3
   voicePack: string; // currently winning vote (or default until game start)
+  // IDs of non-host players who pressed Ready in the lobby. Host can't start
+  // until everyone else here is checked off.
+  lobbyReadyIds?: string[];
   // Reveal-only chronological log of every night action and the vote outcome.
   actionLog?: ActionLogEntry[];
   // Night:
@@ -203,6 +206,7 @@ export interface ClientToServer {
   "room:leave": () => void;
   "lobby:setRoles": (payload: { roles: Role[] }) => void;
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
+  "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:start": () => void;
   "night:action": (payload: NightAction) => void;
   "day:ready": (payload: { ready: boolean }) => void;

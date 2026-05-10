@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { PrivateView, PublicRoom } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -34,6 +35,8 @@ export function VotePhase({ room, me }: Props) {
           {cast}/{total} votes cast
         </div>
       </div>
+
+      <ActiveDeckPanel roles={room.selectedRoles} />
 
       <div className="grid md:grid-cols-[1fr_auto] gap-6 items-start">
         <div className="space-y-6">
