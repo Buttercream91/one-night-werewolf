@@ -4,6 +4,7 @@ import { CopyableCode } from "./components/CopyableCode.js";
 import { Game } from "./components/Game.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
+import { Tutorial } from "./components/Tutorial.js";
 import { joinRoom, send, socket } from "./socket.js";
 import {
   setMusicMuted,
@@ -43,6 +44,7 @@ export function App() {
   // accurately ("Connecting…" on first load vs "Reconnecting…" after a drop).
   const [everConnected, setEverConnected] = useState(socket.connected);
   const [error, setError] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   // Wire socket → react state.
   useEffect(() => {
@@ -215,7 +217,10 @@ export function App() {
         </div>
       )}
 
-      {!session && <Home onJoined={() => {}} />}
+      {!session && showTutorial && <Tutorial onExit={() => setShowTutorial(false)} />}
+      {!session && !showTutorial && (
+        <Home onJoined={() => {}} onTutorial={() => setShowTutorial(true)} />
+      )}
       {session && !room && <div className="mx-auto max-w-md panel text-center">Joining room…</div>}
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}

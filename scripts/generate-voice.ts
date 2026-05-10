@@ -55,6 +55,52 @@ const CLIPS: Record<string, string> = {
   WerewolvesWin: "The Werewolves win!",
   VillagersWin: "The Villagers win!",
   TannerWins: "The Tanner wins!",
+
+  // Narrated tutorial. One clip per step. Step IDs match Tutorial.tsx.
+  Tutorial_Welcome:
+    "Welcome to One Night Ultimate Werewolf. Each round, every player gets one role and the village has one night to find the wolves. This tour walks through the rules and the controls.",
+  Tutorial_Setup:
+    "At the start of a round the deck is dealt. Every player gets a face-down role card. Three extra cards are placed in the centre. Nobody starts holding a centre card.",
+  Tutorial_Phases:
+    "Each round has three phases. Night, where roles act in secret. Day, where you talk it out. Vote, where the village decides who dies.",
+  Tutorial_Goal:
+    "Villagers win if they kill at least one werewolf. Werewolves and the Minion win if no werewolf is killed. The Tanner wins only if they themselves are killed by the vote.",
+  Tutorial_Werewolf:
+    "Werewolves wake at night and see each other. If you are the only werewolf, you may peek at one of the centre cards to learn what is not in play.",
+  Tutorial_Minion:
+    "The Minion sees the werewolves but the werewolves do not see them. The Minion wins with the wolf team, even if the Minion themselves is killed.",
+  Tutorial_Mason:
+    "The two Masons wake together and see each other. They are villagers and trust each other on sight. If only one Mason is in play, that Mason knows it.",
+  Tutorial_Seer:
+    "The Seer can look at one other player's card, or peek at two of the three centre cards. Their report is reliable. Anyone claiming Seer should be tested.",
+  Tutorial_Robber:
+    "The Robber swaps their card with another player's, then peeks at their new card. The other player becomes the Robber and does not know it.",
+  Tutorial_Troublemaker:
+    "The Troublemaker swaps two other players' cards without looking. The two players do not know they were swapped.",
+  Tutorial_Drunk:
+    "The Drunk swaps their card with one of the centre cards without looking. They almost certainly are not a Drunk anymore. They just do not know what they are.",
+  Tutorial_Insomniac:
+    "The Insomniac wakes at the very end of the night and looks at their own card. If a Robber or Troublemaker swapped them, the Insomniac sees what they actually are now.",
+  Tutorial_Hunter:
+    "The Hunter has no night action. If the Hunter is killed by the village vote, the player the Hunter voted for also dies.",
+  Tutorial_Tanner:
+    "The Tanner is on no team. They win only if the village kills them, and they lose if anyone else dies — including no one. Convince the village you are a wolf.",
+  Tutorial_Doppelganger:
+    "The Doppelganger acts first. They look at another player's card and become a copy of that role. If they copy a werewolf, they are now a werewolf. They act on the copied role's turn.",
+  Tutorial_Villager:
+    "Villagers have no night action. They win with the village team. They listen, talk, and vote.",
+  Tutorial_Night:
+    "During the night, the app calls each role in turn. Only that role is awake; the rest stay quiet. Spectators can chat with each other. Players are silent and deaf.",
+  Tutorial_Day:
+    "Once the night is over, the day timer starts. Talk it out. Accuse, claim a role, lie if you have to. Players talk among themselves. Spectators can hear the players but cannot speak.",
+  Tutorial_Accuse:
+    "On a player's tile, click Accuse to publicly call out which role you think they are. You can hold accusations against multiple targets. Accusations are coloured by who made them.",
+  Tutorial_Vote:
+    "When the day timer ends or everyone hits ready, the vote begins. Pick a player to kill. The player with the most votes dies. Ties die together. Nobody dies if no one gets two votes.",
+  Tutorial_Winning:
+    "If a werewolf was killed, villagers win. If no werewolf was killed, the wolf team wins. The Tanner wins only if killed alone. House rule: in a wolfless game, killing the Minion is a village win, killing a villager is a wolf-team win.",
+  Tutorial_Wrap:
+    "That's it. Create a room, share the code with your friends, and have fun. Tip: jump on a separate voice call too if voice chat in-app fails for anyone. The app handles role logic, you handle the deceiving.",
 };
 
 async function generate() {

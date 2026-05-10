@@ -3,9 +3,10 @@ import { createRoom, joinRoom } from "../socket.js";
 
 interface Props {
   onJoined: () => void;
+  onTutorial: () => void;
 }
 
-export function Home({ onJoined }: Props) {
+export function Home({ onJoined, onTutorial }: Props) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,6 +87,13 @@ export function Home({ onJoined }: Props) {
         Tip: get on a Discord/Zoom call together first — discussion happens by voice. The app
         handles roles, the night phase, and voting.
       </p>
+
+      <div className="mt-4 border-t border-slate-800 pt-4 flex items-center justify-between">
+        <span className="text-sm text-slate-300">First time playing?</span>
+        <button onClick={onTutorial} className="btn-ghost text-sm">
+          How to play
+        </button>
+      </div>
     </div>
   );
 }
