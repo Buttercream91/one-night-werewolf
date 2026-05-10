@@ -56,12 +56,21 @@ export interface PublicRoom {
   dayEndsAt?: number; // epoch ms
   daySeconds?: number; // configured length
   readyPlayerIds?: string[];
+  // Public accusations made during the day. Each accuser can hold at most
+  // one active accusation, replacing any previous one.
+  accusations?: Accusation[];
   // Reveal:
   centerCards?: Role[]; // [left, middle, right]
   winners?: WinnerSide[];
 }
 
 export type WinnerSide = "werewolf" | "villager" | "tanner" | "minion" | "hunter_target";
+
+export interface Accusation {
+  accuserId: string;
+  targetId: string;
+  role: Role;
+}
 
 // Chronological log of what happened during the night and at vote time.
 // Revealed to all players at the reveal phase so the table can reconstruct
@@ -213,6 +222,8 @@ export interface ClientToServer {
   "lobby:start": () => void;
   "night:action": (payload: NightAction) => void;
   "day:ready": (payload: { ready: boolean }) => void;
+  // targetId/role null clears this player's accusation.
+  "day:accuse": (payload: { targetId: string | null; role: Role | null }) => void;
   "vote:cast": (payload: { targetId: string | "no_kill" }) => void;
   "room:reset": () => void;
 }

@@ -1,5 +1,5 @@
 import type { Socket } from "socket.io";
-import type { ClientToServer, ServerToClient, Role } from "../shared/types.js";
+import type { ClientToServer, Role, ServerToClient } from "../shared/types.js";
 import { rooms } from "./rooms.js";
 
 export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClient>) {
@@ -163,6 +163,16 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
     room.setDayReady(attachedPlayerId, !!ready);
+    room.broadcast();
+  });
+
+  socket.on("day:accuse", ({ targetId, role }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (targetId !== null && typeof targetId !== "string") return;
+    if (role !== null && !isRole(role)) return;
+    const result = room.setAccusation(attachedPlayerId, targetId, role);
+    if (!result.ok) return socket.emit("error", { message: result.error });
     room.broadcast();
   });
 

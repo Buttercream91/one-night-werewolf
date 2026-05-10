@@ -1,6 +1,7 @@
 import { customAlphabet } from "nanoid";
 import type { Server } from "socket.io";
 import type {
+  Accusation,
   ActionLogEntry,
   ClientToServer,
   NightAction,
@@ -78,6 +79,8 @@ export class Room {
   nightPendingActors = new Set<string>();
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
+  // accuserId -> accusation. At most one active per accuser.
+  accusations = new Map<string, Accusation>();
   winners?: WinnerSide[];
   killedIds: string[] = [];
   actionLog: ActionLogEntry[] = [];
@@ -184,6 +187,7 @@ export class Room {
     this.killedIds = [];
     this.winners = undefined;
     this.actionLog = [];
+    this.accusations.clear();
 
     this.phase = "night";
     this.nightStep = NIGHT_ORDER[0];
@@ -216,6 +220,7 @@ export class Room {
     this.killedIds = [];
     this.winners = undefined;
     this.actionLog = [];
+    this.accusations.clear();
     if (this.dayTimer) {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;
@@ -325,6 +330,21 @@ export class Room {
     );
   }
 
+  setAccusation(accuserId: string, targetId: string | null, role: Role | null): ActionResult {
+    if (this.phase !== "day") return { ok: false, error: "Only during the day" };
+    if (!this.hasPlayer(accuserId)) return { ok: false, error: "Unknown player" };
+    if (targetId == null || role == null) {
+      this.accusations.delete(accuserId);
+      return { ok: true };
+    }
+    if (!this.hasPlayer(targetId)) return { ok: false, error: "Unknown target" };
+    if (!this.selectedRoles.includes(role)) {
+      return { ok: false, error: "Role isn't in this round's deck" };
+    }
+    this.accusations.set(accuserId, { accuserId, targetId, role });
+    return { ok: true };
+  }
+
   setDayReady(playerId: string, ready: boolean) {
     if (this.phase !== "day") return;
     const p = this.players.find((p) => p.id === playerId);
@@ -395,6 +415,10 @@ export class Room {
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
+      accusations:
+        this.phase === "day" || this.phase === "vote" || this.phase === "reveal"
+          ? Array.from(this.accusations.values())
+          : undefined,
       lobbyReadyIds:
         this.phase === "lobby"
           ? this.players.filter((p) => p.lobbyReady).map((p) => p.id)
