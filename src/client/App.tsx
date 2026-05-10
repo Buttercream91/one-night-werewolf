@@ -55,6 +55,10 @@ export function App() {
   const [everConnected, setEverConnected] = useState(socket.connected);
   const [error, setError] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
+  // Currently-playing announcement clip (e.g. ReadyCheck). Tracked so we can
+  // stop it when the round leaves the lobby — once the host hits Start, no
+  // need to keep narrating that a ready check is in progress.
+  const announceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Wire socket → react state.
   useEffect(() => {
@@ -109,13 +113,20 @@ export function App() {
       const file =
         kind === "readyCheck" ? "ReadyCheck" : (null as unknown as string | null);
       if (!file) return;
+      // Stop any in-flight announcement before starting a new one.
+      if (announceAudioRef.current) {
+        announceAudioRef.current.pause();
+        announceAudioRef.current = null;
+      }
       const userPack = loadNarrator() ?? DEFAULT_VOICE_PACK;
       const a = new Audio(`/voice/${userPack}/${file}.mp3`);
+      announceAudioRef.current = a;
       let triedFallback = false;
       a.onerror = () => {
         if (!triedFallback && userPack !== DEFAULT_VOICE_PACK) {
           triedFallback = true;
           const f = new Audio(`/voice/${DEFAULT_VOICE_PACK}/${file}.mp3`);
+          announceAudioRef.current = f;
           f.play().catch(() => {});
         }
       };
@@ -171,6 +182,16 @@ export function App() {
       cancelled = true;
     };
   }, [connected, session?.roomCode, session?.playerId, session?.name]);
+
+  // Cut off any host announcement (e.g. ReadyCheck) the moment the round
+  // leaves the lobby — pressing Start Game shouldn't let the ready-check
+  // narration keep talking over the night phase.
+  useEffect(() => {
+    if (room && room.phase !== "lobby" && announceAudioRef.current) {
+      announceAudioRef.current.pause();
+      announceAudioRef.current = null;
+    }
+  }, [room?.phase]);
 
   // Music plays during the night phase only. A track is picked at random the
   // first moment we enter night and loops for the rest of that game; once the

@@ -228,6 +228,8 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return `Peeked center: ${n.cards.map((c) => `#${c.index + 1} ${label(c.role)}`).join(", ")}.`;
     case "robber_new_role":
       return `Stole from ${nameOf(n.targetId)} and is now ${label(n.role)}.`;
+    case "troublemaker_swapped":
+      return `Swapped ${nameOf(n.targetIds[0])} and ${nameOf(n.targetIds[1])}.`;
     case "insomniac_self":
       return `Confirmed own card: ${label(n.role)}.`;
   }

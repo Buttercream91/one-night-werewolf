@@ -224,6 +224,10 @@ export type NightNote =
   | { kind: "seer_player"; playerId: string; role: Role }
   | { kind: "seer_center"; cards: Array<{ index: 0 | 1 | 2; role: Role }> }
   | { kind: "robber_new_role"; targetId: string; role: Role }
+  // Troublemaker doesn't see what the swapped roles are; the note is just a
+  // record of which two players' cards they swapped, so they can reference
+  // it during the day.
+  | { kind: "troublemaker_swapped"; targetIds: [string, string] }
   | { kind: "insomniac_self"; role: Role };
 
 // Action prompts sent to a single player during the night.

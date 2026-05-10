@@ -387,6 +387,10 @@ export function applyNightAction(
       const aOld = room.currentRoleOf(a.id);
       const bOld = room.currentRoleOf(b.id);
       room.swapPlayerRoles(a.id, b.id);
+      // Troublemaker remembers who they swapped (but not what the cards
+      // were — they didn't see them). Surfaces in their notes panel during
+      // the day so they can claim it accurately.
+      player.notes.push({ kind: "troublemaker_swapped", targetIds: [aId, bId] });
       room.actionLog.push({
         kind: "troublemaker_swapped",
         actorId: player.id,

@@ -140,11 +140,17 @@ function getOrCreatePeer(peerId: string): PeerEntry {
   };
   peers.set(peerId, entry);
 
-  // Wire local tracks if we already have a mic.
+  // Wire local tracks if we already have a mic. If we don't, explicitly add
+  // a receive-only audio transceiver so the SDP offer/answer carries an
+  // audio m-line — without this, a mic-less peer would either initiate an
+  // offer with no media (peer's tracks have nowhere to flow) or receive an
+  // offer and answer with no audio direction set.
   if (localStream) {
     for (const track of localStream.getAudioTracks()) {
       pc.addTrack(track, localStream);
     }
+  } else {
+    pc.addTransceiver("audio", { direction: "recvonly" });
   }
 
   pc.ontrack = (ev) => {

@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
 import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
 import { playerColor, speakingRingClass } from "../playerColor.js";
@@ -400,47 +401,83 @@ function LobbySpectatorTile({
 
 function SpectatorsHostMenu({ room }: { room: PublicRoom }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  // Close on outside click.
-  React.useEffect(() => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Position the menu under-and-right-aligned with the trigger button. Same
+  // approach as PlayerMenu — portal it to body so the .panel's backdrop-blur
+  // stacking context can't bury it under sibling panels.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function reposition() {
+      const btn = buttonRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuWidth = 224;
+      const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, r.right - menuWidth));
+      const top = r.bottom + 4;
+      setPos({ top, left });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         className="text-slate-400 hover:text-slate-200 px-1 leading-none"
         onClick={() => setOpen((o) => !o)}
         title="Spectators options"
       >
         ⋯
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100">
-          <CheckRow
-            label="Mute all spectators"
-            checked={!!room.spectatorsMuted}
-            onToggle={() => send.muteSpectators(!room.spectatorsMuted)}
-          />
-          <CheckRow
-            label="Auto-lock new spectators"
-            checked={!!room.spectatorsAutoLock}
-            onToggle={() => send.setSpectatorsAutoLock(!room.spectatorsAutoLock)}
-            note="New joiners arrive locked. You release them via their tile menu."
-          />
-          <CheckRow
-            label="Hide game state from spectators"
-            checked={!!room.spectatorsBlind}
-            onToggle={() => send.setSpectatorsBlind(!room.spectatorsBlind)}
-            note="Spectators see only public info — no cards, notes, or centre. Stops a spectator next to a player from leaking the game."
-          />
-        </div>
-      )}
-    </div>
+      {open && pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[99999] isolate w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            <CheckRow
+              label="Mute all spectators"
+              checked={!!room.spectatorsMuted}
+              onToggle={() => send.muteSpectators(!room.spectatorsMuted)}
+            />
+            <CheckRow
+              label="Auto-lock new spectators"
+              checked={!!room.spectatorsAutoLock}
+              onToggle={() => send.setSpectatorsAutoLock(!room.spectatorsAutoLock)}
+              note="New joiners arrive locked. You release them via their tile menu."
+            />
+            <CheckRow
+              label="Hide game state from spectators"
+              checked={!!room.spectatorsBlind}
+              onToggle={() => send.setSpectatorsBlind(!room.spectatorsBlind)}
+              note="Spectators see only public info — no cards, notes, or centre. Stops a spectator next to a player from leaking the game."
+            />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
