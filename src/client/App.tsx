@@ -29,7 +29,16 @@ import {
 // Pool of looping night-phase tracks. One is chosen at random when the night
 // phase begins and loops for the rest of that game; a fresh pick happens on
 // the next game's night.
-const NIGHT_MUSIC_URLS = ["/audio/night-music-1.mp3", "/audio/night-music-2.mp3"];
+const NIGHT_MUSIC_URLS = [
+  "/audio/night-music-1.mp3",
+  "/audio/night-music-2.mp3",
+  "/audio/night-music-3.mp3",
+  "/audio/night-music-4.mp3",
+  "/audio/night-music-5.mp3",
+  "/audio/night-music-6.mp3",
+  "/audio/night-music-7.mp3",
+  "/audio/night-music-8.mp3",
+];
 
 function pickNightTrack(): string {
   return NIGHT_MUSIC_URLS[Math.floor(Math.random() * NIGHT_MUSIC_URLS.length)];
