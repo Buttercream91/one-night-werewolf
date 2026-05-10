@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import type { PrivateView, PublicRoom } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { useCountdown } from "../useCountdown.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -13,7 +13,7 @@ interface Props {
 export function DayPhase({ room, me }: Props) {
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
   const isReady = (room.readyPlayerIds ?? []).includes(me.myId);
-  const remaining = useCountdown(room.dayEndsAt);
+  const remaining = useCountdown(room.dayEndsAt, "floor");
 
   return (
     <div className="space-y-6">
@@ -83,17 +83,6 @@ export function DayPhase({ room, me }: Props) {
       <CenterCards me={me} mode="view" selected={[]} setSelected={() => {}} />
     </div>
   );
-}
-
-function useCountdown(endsAt?: number): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!endsAt) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, [endsAt]);
-  if (!endsAt) return 0;
-  return Math.max(0, Math.floor((endsAt - now) / 1000));
 }
 
 function formatTime(s: number): string {

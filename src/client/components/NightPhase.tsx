@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { NightPrompt, NightStep, PrivateView, PublicRoom, Role } from "../../shared/types.js";
 import { ROLE_META } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { useCountdown } from "../useCountdown.js";
 import { CenterCards, type CenterMode } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -348,17 +349,6 @@ function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolea
   if (step === "masons") return originalRole === "mason";
   if (step === "intro" || step === "outro") return false;
   return originalRole === step;
-}
-
-function useCountdown(endsAt?: number): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!endsAt) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, [endsAt]);
-  if (!endsAt) return 0;
-  return Math.max(0, Math.ceil((endsAt - now) / 1000));
 }
 
 let audioUnlocked = false;

@@ -5,6 +5,7 @@ import { Game } from "./components/Game.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
 import { joinRoom, socket } from "./socket.js";
+import { setServerTimeOffset } from "./useCountdown.js";
 import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
 
 export function App() {
@@ -29,6 +30,7 @@ export function App() {
       setConnected(false);
     }
     function onRoomState(r: PublicRoom) {
+      setServerTimeOffset(r.serverNow - Date.now());
       setRoom(r);
     }
     function onYouState(v: PrivateView) {

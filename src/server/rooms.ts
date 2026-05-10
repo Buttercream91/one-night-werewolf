@@ -344,7 +344,6 @@ export class Room {
     if (targetId !== "no_kill" && !this.hasPlayer(targetId)) {
       return { ok: false, error: "Unknown vote target" };
     }
-    if (targetId === playerId) return { ok: false, error: "You can't vote for yourself" };
     const wasUnset = voter.vote == null;
     voter.vote = targetId;
     if (wasUnset) {
@@ -371,6 +370,7 @@ export class Room {
     return {
       code: this.code,
       phase: this.phase,
+      serverNow: Date.now(),
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,

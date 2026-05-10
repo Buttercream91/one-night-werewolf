@@ -4,3 +4,7 @@ dist
 *.log
 .env
 .vite
+
+# Local screenshots / scratch
+Capture*.PNG
+Capture*.png

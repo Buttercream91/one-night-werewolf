@@ -12,7 +12,6 @@ interface Props {
 
 export function VotePhase({ room, me }: Props) {
   const myVote = room.players.find((p) => p.id === me.myId)?.votedFor ?? null;
-  const others = room.players.filter((p) => p.id !== me.myId);
   const total = room.players.length;
   const cast = room.players.filter((p) => p.votedFor != null).length;
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
@@ -40,8 +39,9 @@ export function VotePhase({ room, me }: Props) {
         <div className="space-y-6">
           <div className="panel">
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {others.map((p) => {
+              {room.players.map((p) => {
                 const selected = myVote === p.id;
+                const isSelf = p.id === me.myId;
                 return (
                   <li key={p.id}>
                     <button
@@ -52,7 +52,10 @@ export function VotePhase({ room, me }: Props) {
                       }`}
                       onClick={() => send.vote(p.id)}
                     >
-                      <div className="font-medium text-slate-100">{p.name}</div>
+                      <div className="font-medium text-slate-100">
+                        {p.name}
+                        {isSelf && <span className="ml-1 text-xs text-slate-400">(you)</span>}
+                      </div>
                       <div className="text-xs text-slate-400">
                         {selected ? "Your vote" : "Vote to kill"}
                       </div>

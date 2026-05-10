@@ -35,6 +35,10 @@ export interface PublicPlayer {
 export interface PublicRoom {
   code: string;
   phase: Phase;
+  // Server epoch ms at the moment this state was emitted. Clients use this to
+  // compute a server-client clock offset so countdown timers don't drift if
+  // the client's clock is skewed.
+  serverNow: number;
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3

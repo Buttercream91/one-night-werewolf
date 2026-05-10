@@ -7,21 +7,23 @@ export interface VoteResolution {
 }
 
 // Per the rulebook:
-// 1. Each player votes for another player (or "no_kill" abstain in our UI).
+// 1. Each player votes for another player (or themselves, or "no_kill" abstain).
 // 2. If no player receives more than one vote, nobody is killed.
 // 3. Otherwise, all players tied with the most votes are killed.
 // 4. If the Hunter is among the killed, the player the Hunter voted for also dies.
 //
-// Win conditions (also from the rulebook):
+// Win conditions:
 // - Tanner wins iff the Tanner is killed.
 // - If there is at least one Werewolf in play (current role):
 //     - Villagers win iff at least one Werewolf is killed.
 //     - Otherwise Werewolf team wins (Werewolves + Minion).
-// - If there are no Werewolves in play:
-//     - If nobody is killed: Villagers win.
-//     - If someone is killed (other than only the Tanner): the Minion wins
-//       (the Minion's goal in a wolfless game is to get the village to
-//       lynch a non-Tanner). If only the Tanner died, Tanner wins alone.
+// - Wolfless game (no Werewolves in play). House rule:
+//     - If a "villager" (any non-werewolf/minion/tanner role) is killed,
+//       Werewolf team wins (the Minion wins by virtue of being on that team).
+//     - Else if the Minion is killed, Villagers win.
+//     - Else if no one is killed (everyone abstained, or no majority),
+//       Villagers win.
+//     - Else (only the Tanner died) Tanner alone wins.
 //
 // Each player's personal win is computed client-side from their CURRENT role
 // and the `winners` set we return.
@@ -78,13 +80,21 @@ export function resolveVotes(room: Room): VoteResolution {
       winners.add("werewolf");
     }
   } else {
-    if (killedIds.length === 0) {
-      winners.add("villager");
-    } else if (killedIds.length === 1 && tannerDied) {
-      // Only the Tanner died; nobody else wins.
-    } else {
+    const killedRoles = killedIds.map((id) => room.currentRoleOf(id));
+    const villagerKilled = killedRoles.some(
+      (r) => r !== "werewolf" && r !== "minion" && r !== "tanner",
+    );
+    const minionKilled = killedRoles.includes("minion");
+
+    if (villagerKilled) {
+      // Wolf team wins (only the Minion is on that team in a wolfless game).
       winners.add("minion");
+    } else if (minionKilled) {
+      winners.add("villager");
+    } else if (killedIds.length === 0) {
+      winners.add("villager");
     }
+    // Else only the Tanner died — Tanner alone wins (already added above).
   }
 
   return { killedIds, winners: [...winners] };
