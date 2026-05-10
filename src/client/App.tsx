@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PrivateView, PublicRoom } from "../shared/types.js";
 import { CopyableCode } from "./components/CopyableCode.js";
 import { Game } from "./components/Game.js";
@@ -15,7 +15,14 @@ import {
 import { setServerTimeOffset } from "./useCountdown.js";
 import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
 
-const NIGHT_MUSIC_URL = "/audio/night-music.mp3";
+// Pool of looping night-phase tracks. One is chosen at random when the night
+// phase begins and loops for the rest of that game; a fresh pick happens on
+// the next game's night.
+const NIGHT_MUSIC_URLS = ["/audio/night-music-1.mp3", "/audio/night-music-2.mp3"];
+
+function pickNightTrack(): string {
+  return NIGHT_MUSIC_URLS[Math.floor(Math.random() * NIGHT_MUSIC_URLS.length)];
+}
 
 export function App() {
   const [session, setSession] = useState<SessionData | null>(() => loadSession());
@@ -110,13 +117,21 @@ export function App() {
     };
   }, [connected, session?.roomCode, session?.playerId, session?.name]);
 
-  // Music plays during the night phase only. Stops in lobby/day/vote/reveal,
-  // and on disconnect/leave. Pausing the round also pauses the music — the
-  // server clears nightStepEndsAt while paused but room.phase stays "night",
-  // so we additionally check `paused` to keep the soundtrack honest.
+  // Music plays during the night phase only. A track is picked at random the
+  // first moment we enter night and loops for the rest of that game; once the
+  // phase leaves night (day/vote/reveal), the choice is reset so the next
+  // game gets a fresh pick. Pausing keeps the same track but stops playback;
+  // resuming restarts it.
+  const currentTrack = useRef<string | null>(null);
   useEffect(() => {
-    const playing = !!room && room.phase === "night" && !room.paused;
-    if (playing) startMusic(NIGHT_MUSIC_URL);
+    const inNight = !!room && room.phase === "night";
+    if (inNight && currentTrack.current === null) {
+      currentTrack.current = pickNightTrack();
+    } else if (!inNight && currentTrack.current !== null) {
+      currentTrack.current = null;
+    }
+    const playing = inNight && !room?.paused;
+    if (playing && currentTrack.current) startMusic(currentTrack.current);
     else stopMusic();
   }, [room?.phase, room?.paused]);
 
