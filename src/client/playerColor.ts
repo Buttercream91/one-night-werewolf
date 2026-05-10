@@ -25,10 +25,14 @@ const FALLBACK = PLAYER_COLOR_IDS;
 interface PlayerLike {
   id: string;
   color?: string;
+  spectating?: boolean;
 }
 
 export function playerColor(playerId: string, players: PlayerLike[]): string {
   const p = players.find((pp) => pp.id === playerId);
+  // Spectators get a neutral color — colors are reserved for active players
+  // so the table can recognise them at a glance.
+  if (p?.spectating) return "text-slate-300";
   if (p?.color) {
     const meta = PLAYER_COLOR_CLASSES[p.color];
     if (meta) return meta.text;

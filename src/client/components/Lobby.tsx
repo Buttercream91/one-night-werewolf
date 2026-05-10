@@ -1,13 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
-import {
-  ALL_ROLES,
-  DEFAULT_VOICE_PACK,
-  PLAYER_COLOR_IDS,
-  ROLE_META,
-  VOICE_PACKS,
-} from "../../shared/types.js";
-import { playerColor, speakingRingClass, swatchClass } from "../playerColor.js";
+import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
+import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
 import { useSpeakingLevel } from "../webrtc.js";
@@ -101,8 +95,19 @@ export function Lobby({ room, me }: Props) {
       <div className="panel">
         <div className="flex items-center justify-between gap-3">
           <h2 className="heading text-xl text-indigo-200">
-            Spectators <span className="text-sm text-slate-400">({spectators.length})</span>
+            Spectators <span className="text-sm text-slate-400">({spectators.length}/10)</span>
+            {room.spectatorsMuted && (
+              <span className="ml-2 text-xs text-amber-400" title="Spectators are muted by the host">
+                🔇 muted
+              </span>
+            )}
+            {room.spectatorsAutoLock && (
+              <span className="ml-1 text-xs text-amber-400" title="New joiners are auto-locked to spectator">
+                🔒 auto-lock
+              </span>
+            )}
           </h2>
+          {isHost && <SpectatorsHostMenu room={room} />}
         </div>
         {spectators.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500 italic">No one is spectating.</p>
@@ -325,7 +330,6 @@ function LobbyPlayerTile({
         </div>
       </div>
       {!player.connected && <span className="text-xs">offline</span>}
-      {isMe && <ColorPicker room={room} />}
     </li>
   );
 }
@@ -362,34 +366,80 @@ function LobbySpectatorTile({
         {me && <PlayerMenu target={player} room={room} myId={me.myId} where="lobby" />}
       </div>
       {!player.connected && <span className="text-xs">offline</span>}
-      {isMe && <ColorPicker room={room} />}
     </li>
   );
 }
 
-function ColorPicker({ room }: { room: PublicRoom }) {
-  const taken = new Set(
-    room.players.map((p) => p.color).filter((c): c is string => !!c),
-  );
+function SpectatorsHostMenu({ room }: { room: PublicRoom }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  // Close on outside click.
+  React.useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {PLAYER_COLOR_IDS.map((id) => {
-        const used = taken.has(id);
-        return (
-          <button
-            key={id}
-            disabled={used}
-            onClick={() => send.setColor(id)}
-            title={used ? `${id} (taken)` : `Pick ${id}`}
-            className={`h-5 w-5 rounded-full border ${swatchClass(id)} ${
-              used
-                ? "opacity-30 cursor-not-allowed"
-                : "border-slate-200/40 hover:scale-110 transition-transform"
-            }`}
+    <div ref={ref} className="relative">
+      <button
+        className="text-slate-400 hover:text-slate-200 px-1 leading-none"
+        onClick={() => setOpen((o) => !o)}
+        title="Spectators options"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100">
+          <CheckRow
+            label="Mute all spectators"
+            checked={!!room.spectatorsMuted}
+            onToggle={() => send.muteSpectators(!room.spectatorsMuted)}
           />
-        );
-      })}
+          <CheckRow
+            label="Auto-lock new spectators"
+            checked={!!room.spectatorsAutoLock}
+            onToggle={() => send.setSpectatorsAutoLock(!room.spectatorsAutoLock)}
+            note="New joiners arrive locked. You release them via their tile menu."
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+function CheckRow({
+  label,
+  checked,
+  onToggle,
+  note,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+  note?: string;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-start gap-2"
+    >
+      <span
+        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-xs ${
+          checked
+            ? "border-indigo-400 bg-indigo-500 text-white"
+            : "border-slate-600 bg-slate-900"
+        }`}
+      >
+        {checked ? "✓" : ""}
+      </span>
+      <span className="flex-1">
+        {label}
+        {note && <span className="block text-xs text-slate-400 mt-0.5">{note}</span>}
+      </span>
+    </button>
   );
 }
 

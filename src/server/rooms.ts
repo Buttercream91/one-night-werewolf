@@ -71,6 +71,16 @@ export class Room {
   // and the lobby UI also enforces this so the slot can't be removed.
   selectedRoles: Role[] = ["werewolf"];
   daySeconds = 300;
+  // Host-toggled flag: when true, every spectator is treated as canSpeak=false
+  // regardless of phase. Reduces lobby chatter when there are many spectators.
+  spectatorsMuted = false;
+  // True when the host marked the room private at create time. Private rooms
+  // never appear in the rooms:listPublic results.
+  privateRoom = false;
+  // Host-toggled gating: when true, new joiners arrive forcedSpectating=true
+  // so they can't opt themselves into the active player list — the host has
+  // to release them via the regular force-spectate menu.
+  spectatorsAutoLock = false;
 
   // Game-time:
   centerCards: Role[] = [];
@@ -106,6 +116,11 @@ export class Room {
   // ---- Player management ----
 
   addPlayer(name: string, socketId: string, opts: { spectating?: boolean } = {}): ServerPlayer {
+    const spectating = opts.spectating ?? false;
+    // Auto-lock applies when the room has the toggle on AND the new player is
+    // a spectator (which is the default for room:join). Hosts and dedicated
+    // active joiners aren't locked.
+    const forcedSpectating = spectating && this.spectatorsAutoLock ? true : undefined;
     const player: ServerPlayer = {
       id: newId(),
       name,
@@ -113,18 +128,24 @@ export class Room {
       connected: true,
       notes: [],
       userNotes: [],
-      spectating: opts.spectating ?? false,
-      color: this.pickFreeColor(),
+      spectating,
+      forcedSpectating,
+      // Spectators don't get colors — colors are reserved for the active
+      // player list. They get one assigned on opt-in to the active list.
+      color: spectating ? undefined : this.pickFreeColor(),
     };
     this.players.push(player);
     return player;
   }
 
-  // Pick the first PLAYER_COLOR_ID not already in use. If all are taken
-  // (only possible with >10 players in the room), fall back to the first id
-  // — duplicates are tolerated past the palette size.
+  // Pick the first PLAYER_COLOR_ID not already used by another active player.
+  // Spectators are ignored when checking conflicts.
   private pickFreeColor(): string {
-    const used = new Set(this.players.map((p) => p.color).filter(Boolean) as string[]);
+    const used = new Set(
+      this.players
+        .filter((p) => !p.spectating && p.color)
+        .map((p) => p.color as string),
+    );
     return PLAYER_COLOR_IDS.find((c) => !used.has(c)) ?? PLAYER_COLOR_IDS[0];
   }
 
@@ -474,6 +495,9 @@ export class Room {
       code: this.joinCode,
       phase: this.phase,
       serverNow: Date.now(),
+      spectatorsMuted: this.spectatorsMuted || undefined,
+      privateRoom: this.privateRoom || undefined,
+      spectatorsAutoLock: this.spectatorsAutoLock || undefined,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -597,12 +621,31 @@ export class Room {
     if (!(PLAYER_COLOR_IDS as readonly string[]).includes(color)) {
       return { ok: false, error: "Unknown color" };
     }
-    if (this.players.some((p) => p.id !== playerId && p.color === color)) {
-      return { ok: false, error: "That color is already taken" };
-    }
     const p = this.players.find((p) => p.id === playerId);
     if (!p) return { ok: false, error: "Unknown player" };
+    if (p.spectating) return { ok: false, error: "Spectators don't have a color" };
+    // Uniqueness only enforced among active players — spectator records may
+    // still hold stale colors from a previous opt-in.
+    if (
+      this.players.some(
+        (q) => q.id !== playerId && !q.spectating && q.color === color,
+      )
+    ) {
+      return { ok: false, error: "That color is already taken" };
+    }
     p.color = color;
+    return { ok: true };
+  }
+
+  setSpectatorsMuted(hostId: string, muted: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    this.spectatorsMuted = muted;
+    return { ok: true };
+  }
+
+  setSpectatorsAutoLock(hostId: string, autoLock: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    this.spectatorsAutoLock = autoLock;
     return { ok: true };
   }
 
@@ -695,8 +738,18 @@ export class Room {
         return { ok: false, error: "Active player list is full (10 max)" };
       }
       p.spectating = false;
+      // Hand them a fresh color now that they're displayed in the active list.
+      if (!p.color) p.color = this.pickFreeColor();
       return { ok: true };
     }
+
+    // Becoming a spectator: cap the spectator list at 10 too.
+    const spectatorCount = this.players.filter((q) => q.spectating && q.id !== playerId).length;
+    if (spectatorCount >= 10) {
+      return { ok: false, error: "Spectator list is full (10 max)" };
+    }
+    // Free up their color so another active player can claim it.
+    p.color = undefined;
 
     // Becoming a spectator.
     p.spectating = true;
@@ -855,6 +908,37 @@ class RoomRegistry {
     const room = this.byCode.get(code);
     this.byCode.delete(code);
     if (room) this.byJoinCode.delete(room.joinCode);
+  }
+
+  // Public-lobby browser snapshot. Returns lightweight metadata for every
+  // non-private room currently in the lobby phase — once a game starts it
+  // disappears from the list.
+  listPublic(): Array<{
+    code: string;
+    hostName: string;
+    playerCount: number;
+    spectatorCount: number;
+  }> {
+    const out: Array<{
+      code: string;
+      hostName: string;
+      playerCount: number;
+      spectatorCount: number;
+    }> = [];
+    for (const room of this.byCode.values()) {
+      if (room.privateRoom) continue;
+      if (room.phase !== "lobby") continue;
+      const host = room.hostId ? room.players.find((p) => p.id === room.hostId) : null;
+      out.push({
+        code: room.joinCode,
+        hostName: host?.name ?? "?",
+        playerCount: room.players.filter((p) => !p.spectating).length,
+        spectatorCount: room.players.filter((p) => p.spectating).length,
+      });
+    }
+    // Most recently created (likely most active) first — `byCode` insertion
+    // order tracks creation, so reverse for newest-first.
+    return out.reverse();
   }
 
   // Generate a fresh join code (avoiding collisions with any existing room's

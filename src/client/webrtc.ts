@@ -315,12 +315,16 @@ async function initiateOffer(peerId: string, e: PeerEntry) {
 //   - day / vote: only PLAYERS speak. Spectators are silent listeners; they
 //     hear the players. Other spectators hear nothing because no spectator
 //     is broadcasting.
+//
+// Layered on top: room.spectatorsMuted forces spectator canSpeak=false in
+// every phase regardless of the matrix above.
 export function applyAudioMask(room: PublicRoom): void {
   if (!myPlayerId) return;
   const me = room.players.find((p) => p.id === myPlayerId);
   if (!me) return;
   const myCat = me.spectating ? "spectator" : "player";
-  applyLocalSpeak(canSpeak(myCat, room.phase));
+  const spectatorsMuted = !!room.spectatorsMuted;
+  applyLocalSpeak(canSpeak(myCat, room.phase, spectatorsMuted));
   for (const [peerId, e] of peers) {
     const peer = room.players.find((p) => p.id === peerId);
     const peerCat = peer?.spectating ? "spectator" : "player";
@@ -331,7 +335,8 @@ export function applyAudioMask(room: PublicRoom): void {
 
 type Cat = "player" | "spectator";
 
-function canSpeak(myCat: Cat, phase: Phase): boolean {
+function canSpeak(myCat: Cat, phase: Phase, spectatorsMuted: boolean): boolean {
+  if (myCat === "spectator" && spectatorsMuted) return false;
   if (phase === "lobby" || phase === "reveal") return true;
   if (phase === "night") return myCat === "spectator";
   // day or vote — only players speak; spectators are silent listeners.

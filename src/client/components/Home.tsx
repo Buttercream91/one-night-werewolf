@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createRoom, joinRoom } from "../socket.js";
+import { useEffect, useState } from "react";
+import { createRoom, joinRoom, listPublicRooms } from "../socket.js";
 
 interface Props {
   onJoined: () => void;
@@ -12,13 +12,34 @@ export function Home({ onJoined, onTutorial }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<"create" | "join">("create");
+  const [makePrivate, setMakePrivate] = useState(false);
+  const [publicRooms, setPublicRooms] = useState<
+    Array<{ code: string; hostName: string; playerCount: number; spectatorCount: number }>
+  >([]);
+  const [listLoading, setListLoading] = useState(false);
+
+  async function refreshList() {
+    setListLoading(true);
+    try {
+      const rooms = await listPublicRooms();
+      setPublicRooms(rooms);
+    } finally {
+      setListLoading(false);
+    }
+  }
+
+  // Auto-fetch the list when the Join tab is opened.
+  useEffect(() => {
+    if (tab !== "join") return;
+    void refreshList();
+  }, [tab]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setErr("Enter a name");
     setBusy(true);
     setErr(null);
-    const res = await createRoom(name.trim());
+    const res = await createRoom(name.trim(), { private: makePrivate });
     setBusy(false);
     if (!res.ok) return setErr(res.error);
     onJoined();
@@ -31,6 +52,16 @@ export function Home({ onJoined, onTutorial }: Props) {
     setBusy(true);
     setErr(null);
     const res = await joinRoom(name.trim(), code.trim().toUpperCase());
+    setBusy(false);
+    if (!res.ok) return setErr(res.error);
+    onJoined();
+  }
+
+  async function handleJoinFromList(roomCode: string) {
+    if (!name.trim()) return setErr("Enter a name first");
+    setBusy(true);
+    setErr(null);
+    const res = await joinRoom(name.trim(), roomCode);
     setBusy(false);
     if (!res.ok) return setErr(res.error);
     onJoined();
@@ -77,11 +108,74 @@ export function Home({ onJoined, onTutorial }: Props) {
             />
           </label>
         )}
+        {tab === "create" && (
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={makePrivate}
+              onChange={(e) => setMakePrivate(e.target.checked)}
+              className="accent-indigo-400"
+            />
+            <span>
+              Private room
+              <span className="block text-xs text-slate-500">
+                Won't appear in the public lobby browser. Friends still join with the code.
+              </span>
+            </span>
+          </label>
+        )}
         {err && <div className="text-sm text-rose-300">{err}</div>}
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? "…" : tab === "create" ? "Create room" : "Join room"}
         </button>
       </form>
+
+      {tab === "join" && (
+        <div className="mt-6 border-t border-slate-800 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-slate-300">Public lobbies</span>
+            <button
+              onClick={refreshList}
+              disabled={listLoading}
+              className="btn-ghost text-xs px-2 py-1"
+              title="Refresh list"
+            >
+              {listLoading ? "…" : "↻ Refresh"}
+            </button>
+          </div>
+          {publicRooms.length === 0 ? (
+            <p className="text-xs text-slate-500 italic">
+              {listLoading ? "Loading…" : "No public lobbies open right now."}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {publicRooms.map((r) => (
+                <li
+                  key={r.code}
+                  className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="font-mono text-sm text-slate-100">{r.code}</div>
+                    <div className="text-xs text-slate-400">
+                      hosted by {r.hostName} · {r.playerCount} player
+                      {r.playerCount === 1 ? "" : "s"}
+                      {r.spectatorCount > 0 && `, ${r.spectatorCount} spectating`}
+                    </div>
+                  </div>
+                  <button
+                    className="btn-ghost text-xs px-2 py-1"
+                    disabled={busy || !name.trim()}
+                    onClick={() => handleJoinFromList(r.code)}
+                    title={!name.trim() ? "Enter your name first" : "Join this lobby"}
+                  >
+                    Join
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <p className="mt-6 text-xs text-slate-400">
         Tip: get on a Discord/Zoom call together first — discussion happens by voice. The app

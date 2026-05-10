@@ -6,9 +6,18 @@ export const socket: Socket<ServerToClient, ClientToServer> = io({ autoConnect: 
 
 export function createRoom(
   name: string,
+  opts: { private?: boolean } = {},
 ): Promise<{ ok: true; code: string; playerId: string } | { ok: false; error: string }> {
   return new Promise((resolve) => {
-    socket.emit("room:create", { name }, (res) => resolve(res));
+    socket.emit("room:create", { name, private: opts.private }, (res) => resolve(res));
+  });
+}
+
+export function listPublicRooms(): Promise<
+  Array<{ code: string; hostName: string; playerCount: number; spectatorCount: number }>
+> {
+  return new Promise((resolve) => {
+    socket.emit("rooms:listPublic", (res) => resolve(res.rooms));
   });
 }
 
@@ -31,6 +40,9 @@ export const send = {
   forceSpectate: (playerId: string, spectating: boolean) =>
     socket.emit("lobby:forceSpectate", { playerId, spectating }),
   promoteHost: (playerId: string) => socket.emit("lobby:promoteHost", { playerId }),
+  muteSpectators: (muted: boolean) => socket.emit("lobby:muteSpectators", { muted }),
+  setSpectatorsAutoLock: (autoLock: boolean) =>
+    socket.emit("lobby:setSpectatorsAutoLock", { autoLock }),
   start: () => socket.emit("lobby:start"),
   nightAction: (action: Parameters<ClientToServer["night:action"]>[0]) =>
     socket.emit("night:action", action),

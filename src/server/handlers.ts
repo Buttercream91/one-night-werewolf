@@ -23,15 +23,20 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     return rooms.get(attachedRoomCode);
   }
 
-  socket.on("room:create", ({ name }, cb) => {
+  socket.on("room:create", ({ name, private: isPrivate }, cb) => {
     if (!validName(name)) return cb({ ok: false, error: "Name required" });
     const room = rooms.create();
+    room.privateRoom = !!isPrivate;
     const player = room.addPlayer(name.trim(), socket.id);
     room.setHost(player.id);
     attach(room.code, player.id);
     socket.emit("joined", { roomCode: room.joinCode, playerId: player.id, name: player.name });
     room.broadcast();
     cb({ ok: true, code: room.joinCode, playerId: player.id });
+  });
+
+  socket.on("rooms:listPublic", (cb) => {
+    cb({ rooms: rooms.listPublic() });
   });
 
   socket.on("room:join", ({ name, code, resumePlayerId }, cb) => {
@@ -173,6 +178,22 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     if (!room || !attachedPlayerId) return;
     if (typeof playerId !== "string") return;
     const result = room.transferHost(attachedPlayerId, playerId);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:muteSpectators", ({ muted }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setSpectatorsMuted(attachedPlayerId, !!muted);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:setSpectatorsAutoLock", ({ autoLock }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setSpectatorsAutoLock(attachedPlayerId, !!autoLock);
     if (!result.ok) return socket.emit("error", { message: result.error });
     room.broadcast();
   });

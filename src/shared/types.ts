@@ -52,6 +52,15 @@ export interface PublicRoom {
   // compute a server-client clock offset so countdown timers don't drift if
   // the client's clock is skewed.
   serverNow: number;
+  // Set when the host has muted all spectators. Spectator canSpeak is gated
+  // by this flag in every phase.
+  spectatorsMuted?: boolean;
+  // Set when the host marks the room as private. Private rooms don't appear
+  // in the public lobby browser.
+  privateRoom?: boolean;
+  // Set when new joiners should be force-locked to spectator on arrival.
+  // Lets the host gate who can join the active player list.
+  spectatorsAutoLock?: boolean;
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3
@@ -274,8 +283,20 @@ export interface ServerToClient {
 
 export interface ClientToServer {
   "room:create": (
-    payload: { name: string },
+    payload: { name: string; private?: boolean },
     cb: (res: { ok: true; code: string; playerId: string } | { ok: false; error: string }) => void,
+  ) => void;
+  // Lightweight metadata listing for the public lobby browser. Server filters
+  // out private rooms and rooms not in the lobby phase before returning.
+  "rooms:listPublic": (
+    cb: (res: {
+      rooms: Array<{
+        code: string;
+        hostName: string;
+        playerCount: number;
+        spectatorCount: number;
+      }>;
+    }) => void,
   ) => void;
   "note:add": (payload: { text: string }) => void;
   "note:remove": (payload: { index: number }) => void;
@@ -300,6 +321,10 @@ export interface ClientToServer {
   "lobby:forceSpectate": (payload: { playerId: string; spectating: boolean }) => void;
   // Host hands the host role to another player. Old host becomes regular.
   "lobby:promoteHost": (payload: { playerId: string }) => void;
+  // Host toggles a global mute flag for all spectators. Affects all phases.
+  "lobby:muteSpectators": (payload: { muted: boolean }) => void;
+  // Host toggles whether new joiners arrive force-spectated.
+  "lobby:setSpectatorsAutoLock": (payload: { autoLock: boolean }) => void;
   "lobby:start": () => void;
   "room:pause": (payload: { paused: boolean }) => void;
   "night:action": (payload: NightAction) => void;

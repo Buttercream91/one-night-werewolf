@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PublicPlayer, PublicRoom } from "../../shared/types.js";
+import { PLAYER_COLOR_IDS } from "../../shared/types.js";
+import { swatchClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import {
   getPeerMuted,
@@ -28,9 +30,15 @@ interface Props {
 
 export function PlayerMenu({ target, room, myId, where }: Props) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"main" | "colors">("main");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Reset to main view whenever the menu reopens.
+  useEffect(() => {
+    if (!open) setMode("main");
+  }, [open]);
 
   // Position the menu under-and-right-aligned with the trigger button. Recompute
   // on open and when the layout shifts (scroll / resize) so the menu tracks the
@@ -76,73 +84,97 @@ export function PlayerMenu({ target, room, myId, where }: Props) {
   const targetIsForcedSpec = !!target.forcedSpectating;
   const targetIsSpec = !!target.spectating;
 
+  const isLobby = room.phase === "lobby";
+  const canPickColor = isMe && isLobby && !targetIsSpec;
+
   const menu =
     open && pos
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[1000] w-52 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
+            className="fixed z-[1000] w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
             style={{ top: pos.top, left: pos.left }}
           >
-            {!isMe && <PeerVolumeRow targetId={target.id} />}
-            {!isMe && <Sep />}
-
-            {isMe && (
+            {mode === "colors" ? (
+              <ColorSubmenu
+                room={room}
+                myId={myId}
+                onBack={() => setMode("main")}
+                onPick={(c) => {
+                  send.setColor(c);
+                  setOpen(false);
+                }}
+              />
+            ) : (
               <>
-                {!target.isHost && !targetIsForcedSpec && (
-                  <Item
-                    label={targetIsSpec ? "Join the game" : "Switch to spectator"}
-                    onClick={() => {
-                      send.spectate(!targetIsSpec);
-                      setOpen(false);
-                    }}
-                  />
-                )}
-                {targetIsForcedSpec && <ItemDisabled label="Spectator (locked by host)" />}
-              </>
-            )}
+                {!isMe && <PeerVolumeRow targetId={target.id} />}
+                {!isMe && <Sep />}
 
-            {iAmHost && !isMe && (
-              <>
-                {isMe ? null : <Sep />}
-                <Item
-                  label={targetIsForcedSpec ? "Release from spectator" : "Move to spectator"}
-                  onClick={() => {
-                    send.forceSpectate(target.id, !targetIsForcedSpec);
-                    setOpen(false);
-                  }}
-                  title={
-                    targetIsForcedSpec
-                      ? "Lift the spectator lock — the player can opt back in"
-                      : "Move them to spectator. Only you can release them."
-                  }
-                />
-                {!targetIsHost && (
-                  <Item
-                    label="Promote to host"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Promote ${target.name} to host? You'll lose host controls and become a regular player.`,
-                        )
-                      ) {
-                        send.promoteHost(target.id);
-                        setOpen(false);
-                      }
-                    }}
-                  />
+                {isMe && (
+                  <>
+                    {canPickColor && (
+                      <Item
+                        label="Pick color ›"
+                        onClick={() => setMode("colors")}
+                        title="Choose your display color"
+                      />
+                    )}
+                    {!target.isHost && !targetIsForcedSpec && (
+                      <Item
+                        label={targetIsSpec ? "Join the game" : "Switch to spectator"}
+                        onClick={() => {
+                          send.spectate(!targetIsSpec);
+                          setOpen(false);
+                        }}
+                      />
+                    )}
+                    {targetIsForcedSpec && <ItemDisabled label="Spectator (locked by host)" />}
+                  </>
                 )}
-                {where === "lobby" && (
-                  <Item
-                    label="Kick from room"
-                    destructive
-                    onClick={() => {
-                      if (confirm(`Kick ${target.name}? The room code will change.`)) {
-                        send.kick(target.id);
+
+                {iAmHost && !isMe && (
+                  <>
+                    {isMe ? null : <Sep />}
+                    <Item
+                      label={targetIsForcedSpec ? "Release from spectator" : "Move to spectator"}
+                      onClick={() => {
+                        send.forceSpectate(target.id, !targetIsForcedSpec);
                         setOpen(false);
+                      }}
+                      title={
+                        targetIsForcedSpec
+                          ? "Lift the spectator lock — the player can opt back in"
+                          : "Move them to spectator. Only you can release them."
                       }
-                    }}
-                  />
+                    />
+                    {!targetIsHost && (
+                      <Item
+                        label="Promote to host"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `Promote ${target.name} to host? You'll lose host controls and become a regular player.`,
+                            )
+                          ) {
+                            send.promoteHost(target.id);
+                            setOpen(false);
+                          }
+                        }}
+                      />
+                    )}
+                    {where === "lobby" && (
+                      <Item
+                        label="Kick from room"
+                        destructive
+                        onClick={() => {
+                          if (confirm(`Kick ${target.name}? The room code will change.`)) {
+                            send.kick(target.id);
+                            setOpen(false);
+                          }
+                        }}
+                      />
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -200,6 +232,58 @@ function ItemDisabled({ label }: { label: string }) {
 
 function Sep() {
   return <div className="border-t border-slate-800" />;
+}
+
+function ColorSubmenu({
+  room,
+  myId,
+  onBack,
+  onPick,
+}: {
+  room: PublicRoom;
+  myId: string;
+  onBack: () => void;
+  onPick: (color: string) => void;
+}) {
+  // Active players' colors are taken; spectators don't reserve any.
+  const taken = new Set(
+    room.players
+      .filter((p) => !p.spectating && p.color && p.id !== myId)
+      .map((p) => p.color as string),
+  );
+  const myColor = room.players.find((p) => p.id === myId)?.color;
+  return (
+    <>
+      <button
+        onClick={onBack}
+        className="w-full text-left px-3 py-2 hover:bg-slate-800 text-xs text-slate-400"
+      >
+        ← Back
+      </button>
+      <Sep />
+      <div className="px-3 py-2 grid grid-cols-5 gap-2">
+        {PLAYER_COLOR_IDS.map((id) => {
+          const used = taken.has(id);
+          const mine = myColor === id;
+          return (
+            <button
+              key={id}
+              disabled={used && !mine}
+              onClick={() => onPick(id)}
+              title={used && !mine ? `${id} (taken)` : `Pick ${id}`}
+              className={`h-7 w-7 rounded-full border-2 ${swatchClass(id)} ${
+                mine
+                  ? "border-white shadow-[0_0_0_2px_rgba(99,102,241,0.6)]"
+                  : used
+                    ? "border-transparent opacity-30 cursor-not-allowed"
+                    : "border-slate-200/40 hover:scale-110 transition-transform"
+              }`}
+            />
+          );
+        })}
+      </div>
+    </>
+  );
 }
 
 // Per-peer volume + mute, both stored locally. Pre-voice-chat these are
