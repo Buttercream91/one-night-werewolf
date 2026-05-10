@@ -49,6 +49,7 @@ export interface ServerPlayer {
   lobbyReady?: boolean; // Lobby "ready for host to start"
   spectating?: boolean; // Player tapped "Back to lobby" during the round.
   forcedSpectating?: boolean; // Host moved them to spectator; only host releases.
+  hasMic?: boolean; // Voice-chat presence flag — set after the client gets mic.
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -120,8 +121,21 @@ export class Room {
   removePlayer(playerId: string) {
     this.players = this.players.filter((p) => p.id !== playerId);
     if (this.hostId === playerId) {
-      this.hostId = this.players[0]?.id ?? null;
+      this.hostId = this.pickFallbackHost(playerId);
     }
+  }
+
+  // Pick a sensible new host. Prefer a connected, non-spectator player; fall
+  // back to any connected player; finally fall back to null. Used when the
+  // current host leaves the room or moves themselves to spectator (a host
+  // who's spectating shouldn't gate the round / new-game button).
+  private pickFallbackHost(excludeId: string): string | null {
+    const active = this.players.find(
+      (p) => p.id !== excludeId && p.connected && !p.spectating,
+    );
+    if (active) return active.id;
+    const anyConnected = this.players.find((p) => p.id !== excludeId && p.connected);
+    return anyConnected?.id ?? null;
   }
 
   hasPlayer(id: string) {
@@ -143,7 +157,15 @@ export class Room {
 
   markDisconnected(playerId: string) {
     const p = this.players.find((p) => p.id === playerId);
-    if (p) p.connected = false;
+    if (p) {
+      p.connected = false;
+      p.hasMic = false; // Mic implicitly off when the socket drops.
+    }
+  }
+
+  setHasMic(playerId: string, hasMic: boolean) {
+    const p = this.players.find((p) => p.id === playerId);
+    if (p) p.hasMic = hasMic;
   }
 
   setHost(playerId: string) {
@@ -449,6 +471,7 @@ export class Room {
         isHost: p.id === this.hostId,
         spectating: p.spectating || undefined,
         forcedSpectating: p.forcedSpectating || undefined,
+        hasMic: p.hasMic || undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
@@ -654,6 +677,12 @@ export class Room {
     p.spectating = true;
     p.prompt = undefined;
     p.lobbyReady = false;
+    // If the host moves to spectator, transfer the host role so the round
+    // and the New Game button aren't gated on someone who's stepped out.
+    if (this.hostId === playerId) {
+      const next = this.pickFallbackHost(playerId);
+      if (next) this.hostId = next;
+    }
     // If they had a pending night action, default it now so the step doesn't
     // wait on them and other roles' visible info stays consistent.
     if (this.phase === "night" && this.nightStep && this.nightPendingActors.has(playerId)) {

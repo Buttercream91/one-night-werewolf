@@ -14,6 +14,16 @@ import {
 } from "./music.js";
 import { setServerTimeOffset } from "./useCountdown.js";
 import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
+import {
+  handleAnswer,
+  handleIce,
+  handleOffer,
+  setMyPlayerId,
+  startMic,
+  stopMic,
+  syncPeers,
+  useMicState,
+} from "./webrtc.js";
 
 // Pool of looping night-phase tracks. One is chosen at random when the night
 // phase begins and loops for the rest of that game; a fresh pick happens on
@@ -48,6 +58,9 @@ export function App() {
     function onRoomState(r: PublicRoom) {
       setServerTimeOffset(r.serverNow - Date.now());
       setRoom(r);
+      // Sync the WebRTC peer set + audio mask on every state — handles new
+      // joiners, leavers, mic flips, and phase changes uniformly.
+      syncPeers(r);
       // The host can rotate the room's join code when kicking. Keep the saved
       // session in lockstep so a refresh reconnects with the current code.
       setSession((prev) => {
@@ -64,6 +77,7 @@ export function App() {
       const data = { roomCode: payload.roomCode, playerId: payload.playerId, name: payload.name };
       saveSession(data);
       setSession(data);
+      setMyPlayerId(payload.playerId);
       setError(null);
     }
     function onError(payload: { message: string }) {
@@ -84,6 +98,11 @@ export function App() {
     socket.on("joined", onJoined);
     socket.on("error", onError);
     socket.on("kicked", onKicked);
+    // WebRTC signaling — relayed by the server, fed straight into the
+    // webrtc module which manages peer connections.
+    socket.on("webrtc:offer", ({ from, sdp }) => void handleOffer(from, sdp));
+    socket.on("webrtc:answer", ({ from, sdp }) => void handleAnswer(from, sdp));
+    socket.on("webrtc:ice", ({ from, candidate }) => void handleIce(from, candidate));
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -92,6 +111,9 @@ export function App() {
       socket.off("joined", onJoined);
       socket.off("error", onError);
       socket.off("kicked", onKicked);
+      socket.off("webrtc:offer");
+      socket.off("webrtc:answer");
+      socket.off("webrtc:ice");
     };
   }, []);
 
@@ -141,7 +163,9 @@ export function App() {
     setSession(null);
     setRoom(null);
     setMe(null);
+    setMyPlayerId(null);
     stopMusic();
+    stopMic();
   }
 
   // Routing: if no session yet, show home. Otherwise show lobby/game based on phase.
@@ -161,6 +185,7 @@ export function App() {
               <span className="text-slate-400">
                 Room <CopyableCode code={room.code} className="text-slate-100" />
               </span>
+              <MicButton />
               <MusicControls />
               {room.paused && (
                 <span className="text-xs uppercase tracking-wider px-2 py-1 rounded border border-amber-700 bg-amber-950/50 text-amber-300">
@@ -195,6 +220,37 @@ export function App() {
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
     </div>
+  );
+}
+
+function MicButton() {
+  const { enabled } = useMicState();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className={`text-xs px-2 py-1 rounded border ${
+        enabled
+          ? "border-emerald-700 bg-emerald-950/50 text-emerald-200 hover:border-emerald-600"
+          : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500"
+      }`}
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          if (enabled) {
+            stopMic();
+          } else {
+            const res = await startMic();
+            if (!res.ok) alert(res.error);
+          }
+        } finally {
+          setBusy(false);
+        }
+      }}
+      title={enabled ? "Mic is live — click to stop" : "Enable your microphone for voice chat"}
+    >
+      {enabled ? "🎙 Mic on" : "🎙 Enable mic"}
+    </button>
   );
 }
 

@@ -218,6 +218,33 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("audio:setReady", ({ ready }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    room.setHasMic(attachedPlayerId, !!ready);
+    room.broadcast();
+  });
+
+  // WebRTC signaling relays. We look up the target by playerId and forward
+  // to that socket only. The sender's playerId is appended as `from` so the
+  // recipient can identify the peer without trusting client-supplied data.
+  function relaySignaling(
+    eventName: "webrtc:offer" | "webrtc:answer" | "webrtc:ice",
+    payload: { target: string; [k: string]: unknown },
+  ) {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof payload?.target !== "string") return;
+    const target = room.players.find((p) => p.id === payload.target);
+    if (!target || !target.connected) return;
+    const { target: _omitTarget, ...rest } = payload;
+    socket.to(target.socketId).emit(eventName, { from: attachedPlayerId, ...rest } as never);
+  }
+
+  socket.on("webrtc:offer", (p) => relaySignaling("webrtc:offer", p));
+  socket.on("webrtc:answer", (p) => relaySignaling("webrtc:answer", p));
+  socket.on("webrtc:ice", (p) => relaySignaling("webrtc:ice", p));
+
   socket.on("room:reset", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

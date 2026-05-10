@@ -30,6 +30,10 @@ export interface PublicPlayer {
   // Host force-set this player to spectator. The player can't return to
   // active on their own — only the host can release them. Implies spectating.
   forcedSpectating?: boolean;
+  // True once this player has granted mic access and is ready to negotiate
+  // peer connections. Other clients only initiate WebRTC offers to peers
+  // whose hasMic is true; this avoids racing with mic-permission flow.
+  hasMic?: boolean;
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
@@ -236,6 +240,19 @@ export interface ChatMessage {
 
 // ---- Wire protocol ----
 
+// Structural mirrors of DOM WebRTC types so the wire protocol can be referenced
+// from server code (which doesn't have DOM lib loaded).
+export interface SignalingDescription {
+  type: "offer" | "answer" | "pranswer" | "rollback";
+  sdp?: string;
+}
+export interface SignalingIceCandidate {
+  candidate?: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+}
+
 export interface ServerToClient {
   "room:state": (room: PublicRoom) => void;
   "you:state": (view: PrivateView) => void;
@@ -245,6 +262,10 @@ export interface ServerToClient {
   // Sent to a player who was kicked by the host. The client clears its
   // session and returns to the home screen.
   "kicked": (payload: { reason: string }) => void;
+  // WebRTC signaling forwarded to this client. `from` is the sender's playerId.
+  "webrtc:offer": (payload: { from: string; sdp: SignalingDescription }) => void;
+  "webrtc:answer": (payload: { from: string; sdp: SignalingDescription }) => void;
+  "webrtc:ice": (payload: { from: string; candidate: SignalingIceCandidate }) => void;
 }
 
 export interface ClientToServer {
@@ -282,6 +303,14 @@ export interface ClientToServer {
   "day:accuse": (payload: { targetId: string; role: Role | null }) => void;
   "vote:cast": (payload: { targetId: string | "no_kill" }) => void;
   "room:reset": () => void;
+  // Voice chat: client tells server when it has mic access (or has stopped).
+  // Server marks the player and broadcasts so peers know to negotiate.
+  "audio:setReady": (payload: { ready: boolean }) => void;
+  // WebRTC signaling — relayed by the server from the sender to `target`.
+  // The server adds a `from` field with the sender's playerId before forwarding.
+  "webrtc:offer": (payload: { target: string; sdp: SignalingDescription }) => void;
+  "webrtc:answer": (payload: { target: string; sdp: SignalingDescription }) => void;
+  "webrtc:ice": (payload: { target: string; candidate: SignalingIceCandidate }) => void;
 }
 
 // ---- Role metadata helpers ----
