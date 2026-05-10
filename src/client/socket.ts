@@ -6,15 +6,25 @@ export const socket: Socket<ServerToClient, ClientToServer> = io({ autoConnect: 
 
 export function createRoom(
   name: string,
-  opts: { private?: boolean } = {},
+  opts: { private?: boolean; roomName?: string } = {},
 ): Promise<{ ok: true; code: string; playerId: string } | { ok: false; error: string }> {
   return new Promise((resolve) => {
-    socket.emit("room:create", { name, private: opts.private }, (res) => resolve(res));
+    socket.emit(
+      "room:create",
+      { name, private: opts.private, roomName: opts.roomName },
+      (res) => resolve(res),
+    );
   });
 }
 
 export function listPublicRooms(): Promise<
-  Array<{ code: string; hostName: string; playerCount: number; spectatorCount: number }>
+  Array<{
+    code: string;
+    roomName?: string;
+    hostName: string;
+    playerCount: number;
+    spectatorCount: number;
+  }>
 > {
   return new Promise((resolve) => {
     socket.emit("rooms:listPublic", (res) => resolve(res.rooms));
@@ -61,4 +71,5 @@ export const send = {
   pause: (paused: boolean) => socket.emit("room:pause", { paused }),
   addNote: (text: string) => socket.emit("note:add", { text }),
   removeNote: (index: number) => socket.emit("note:remove", { index }),
+  chat: (text: string) => socket.emit("lobby:chat:send", { text }),
 };

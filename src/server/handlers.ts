@@ -23,10 +23,14 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     return rooms.get(attachedRoomCode);
   }
 
-  socket.on("room:create", ({ name, private: isPrivate }, cb) => {
+  socket.on("room:create", ({ name, private: isPrivate, roomName }, cb) => {
     if (!validName(name)) return cb({ ok: false, error: "Name required" });
     const room = rooms.create();
     room.privateRoom = !!isPrivate;
+    if (typeof roomName === "string") {
+      const trimmed = roomName.trim().slice(0, 40);
+      if (trimmed) room.roomName = trimmed;
+    }
     const player = room.addPlayer(name.trim(), socket.id);
     room.setHost(player.id);
     attach(room.code, player.id);
@@ -37,6 +41,15 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
 
   socket.on("rooms:listPublic", (cb) => {
     cb({ rooms: rooms.listPublic() });
+  });
+
+  socket.on("lobby:chat:send", ({ text }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof text !== "string") return;
+    const result = room.addChatMessage(attachedPlayerId, text);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
   });
 
   socket.on("room:join", ({ name, code, resumePlayerId }, cb) => {

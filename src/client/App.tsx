@@ -24,6 +24,8 @@ import {
   startMic,
   stopMic,
   syncPeers,
+  unblockAudio,
+  useAudioBlocked,
   useMicState,
 } from "./webrtc.js";
 
@@ -237,6 +239,7 @@ export function App() {
           {session && room && (
             <>
               <span className="text-slate-400">
+                {room.name && <span className="text-slate-100 mr-2">{room.name}</span>}
                 Room <CopyableCode code={room.code} className="text-slate-100" />
               </span>
               <MicButton />
@@ -269,6 +272,8 @@ export function App() {
         </div>
       )}
 
+      <AudioBlockedBanner />
+
       {!session && showTutorial && <Tutorial onExit={() => setShowTutorial(false)} />}
       {!session && !showTutorial && (
         <Home onJoined={() => {}} onTutorial={() => setShowTutorial(true)} />
@@ -276,6 +281,25 @@ export function App() {
       {session && !room && <div className="mx-auto max-w-md panel text-center">Joining room…</div>}
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
+    </div>
+  );
+}
+
+function AudioBlockedBanner() {
+  const blocked = useAudioBlocked();
+  if (!blocked) return null;
+  return (
+    <div className="mx-auto max-w-7xl mb-4 rounded-md border border-amber-700 bg-amber-950/60 px-3 py-2 text-amber-100 text-sm flex items-center justify-between gap-3">
+      <span>
+        🔊 Your browser is blocking incoming audio until you tap. Click the
+        button to start hearing the room.
+      </span>
+      <button
+        className="btn-primary text-xs px-3 py-1.5"
+        onClick={() => void unblockAudio()}
+      >
+        Tap to enable audio
+      </button>
     </div>
   );
 }

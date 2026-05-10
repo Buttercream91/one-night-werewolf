@@ -9,12 +9,19 @@ interface Props {
 export function Home({ onJoined, onTutorial }: Props) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [roomName, setRoomName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<"create" | "join">("create");
   const [makePrivate, setMakePrivate] = useState(false);
   const [publicRooms, setPublicRooms] = useState<
-    Array<{ code: string; hostName: string; playerCount: number; spectatorCount: number }>
+    Array<{
+      code: string;
+      roomName?: string;
+      hostName: string;
+      playerCount: number;
+      spectatorCount: number;
+    }>
   >([]);
   const [listLoading, setListLoading] = useState(false);
 
@@ -39,7 +46,10 @@ export function Home({ onJoined, onTutorial }: Props) {
     if (!name.trim()) return setErr("Enter a name");
     setBusy(true);
     setErr(null);
-    const res = await createRoom(name.trim(), { private: makePrivate });
+    const res = await createRoom(name.trim(), {
+      private: makePrivate,
+      roomName: roomName.trim() || undefined,
+    });
     setBusy(false);
     if (!res.ok) return setErr(res.error);
     onJoined();
@@ -109,20 +119,34 @@ export function Home({ onJoined, onTutorial }: Props) {
           </label>
         )}
         {tab === "create" && (
-          <label className="flex items-center gap-2 text-sm text-slate-300">
-            <input
-              type="checkbox"
-              checked={makePrivate}
-              onChange={(e) => setMakePrivate(e.target.checked)}
-              className="accent-indigo-400"
-            />
-            <span>
-              Private room
-              <span className="block text-xs text-slate-500">
-                Won't appear in the public lobby browser. Friends still join with the code.
+          <>
+            <label className="block">
+              <span className="block text-sm text-slate-300 mb-1">
+                Lobby name <span className="text-slate-500 text-xs">(optional)</span>
               </span>
-            </span>
-          </label>
+              <input
+                className="input"
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                placeholder="e.g. Werewolf Wednesdays"
+                maxLength={40}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={makePrivate}
+                onChange={(e) => setMakePrivate(e.target.checked)}
+                className="accent-indigo-400"
+              />
+              <span>
+                Private room
+                <span className="block text-xs text-slate-500">
+                  Won't appear in the public lobby browser. Friends still join with the code.
+                </span>
+              </span>
+            </label>
+          </>
         )}
         {err && <div className="text-sm text-rose-300">{err}</div>}
         <button type="submit" className="btn-primary w-full" disabled={busy}>
@@ -155,7 +179,10 @@ export function Home({ onJoined, onTutorial }: Props) {
                   className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <div className="font-mono text-sm text-slate-100">{r.code}</div>
+                    <div className="text-sm text-slate-100 truncate">
+                      {r.roomName ?? <span className="text-slate-400 italic">Untitled</span>}{" "}
+                      <span className="font-mono text-xs text-slate-500">{r.code}</span>
+                    </div>
                     <div className="text-xs text-slate-400">
                       hosted by {r.hostName} · {r.playerCount} player
                       {r.playerCount === 1 ? "" : "s"}

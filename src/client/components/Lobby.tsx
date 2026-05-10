@@ -6,6 +6,7 @@ import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
 import { useSpeakingLevel } from "../webrtc.js";
+import { ChatPanel } from "./ChatPanel.js";
 import { CopyableCode } from "./CopyableCode.js";
 import { PlayerMenu } from "./PlayerMenu.js";
 import { ROLE_IMAGE } from "./RoleCard.js";
@@ -130,6 +131,8 @@ export function Lobby({ room, me }: Props) {
           </ul>
         )}
       </div>
+
+      <ChatPanel room={room} me={me} />
 
       <NarratorPicker />
 

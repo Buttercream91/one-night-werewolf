@@ -3,6 +3,7 @@ import type { Server } from "socket.io";
 import type {
   Accusation,
   ActionLogEntry,
+  ChatMessage,
   ClientToServer,
   NightAction,
   NightNote,
@@ -28,6 +29,7 @@ import { resolveVotes } from "./vote.js";
 
 const newCode = customAlphabet("BCDFGHJKLMNPQRSTVWXYZ", 4);
 const newId = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 10);
+const MAX_CHAT_MESSAGES = 50;
 
 type IO = Server<ClientToServer, ServerToClient>;
 
@@ -63,6 +65,8 @@ export class Room {
   // when the host kicks a player so the kicked player can't rejoin with the
   // code they have. Always uppercase A–Z (no vowels).
   joinCode: string;
+  // Optional friendly name set by the host at create time.
+  roomName?: string;
   io: IO;
   hostId: string | null = null;
   phase: Phase = "lobby";
@@ -92,6 +96,9 @@ export class Room {
   // accepts any size >= active players + 3 instead of requiring exact match.
   // Extras are dealt into the centre, growing the unknown pool.
   removeCardLimit = false;
+  // Lobby chat ring buffer. Capped at MAX_CHAT_MESSAGES; cleared on game
+  // start. Broadcast as part of PublicRoom only in the lobby phase.
+  chatMessages: ChatMessage[] = [];
 
   // Game-time:
   centerCards: Role[] = [];
@@ -281,6 +288,7 @@ export class Room {
     this.winners = undefined;
     this.actionLog = [];
     this.accusations = [];
+    this.chatMessages = []; // start the new round's chat fresh
 
     this.phase = "night";
     this.nightStep = NIGHT_ORDER[0];
@@ -514,8 +522,10 @@ export class Room {
     const isVoting = this.phase === "vote";
     return {
       code: this.joinCode,
+      name: this.roomName,
       phase: this.phase,
       serverNow: Date.now(),
+      chatMessages: this.phase === "lobby" ? this.chatMessages : undefined,
       spectatorsMuted: this.spectatorsMuted || undefined,
       privateRoom: this.privateRoom || undefined,
       spectatorsAutoLock: this.spectatorsAutoLock || undefined,
@@ -695,6 +705,29 @@ export class Room {
       return { ok: false, error: "Only configurable in the lobby" };
     }
     this.removeCardLimit = remove;
+    return { ok: true };
+  }
+
+  // Append a chat message from a player. Validates phase + text. Trims and
+  // caps length; the message log is also capped at MAX_CHAT_MESSAGES so a
+  // long-running lobby doesn't accumulate forever.
+  addChatMessage(playerId: string, text: string): ActionResult {
+    if (this.phase !== "lobby") return { ok: false, error: "Chat is lobby-only" };
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) return { ok: false, error: "Unknown player" };
+    const trimmed = text.trim().slice(0, 200);
+    if (!trimmed) return { ok: false, error: "Empty message" };
+    const msg: ChatMessage = {
+      id: newId(),
+      fromId: playerId,
+      fromName: player.name,
+      text: trimmed,
+      ts: Date.now(),
+    };
+    this.chatMessages.push(msg);
+    if (this.chatMessages.length > MAX_CHAT_MESSAGES) {
+      this.chatMessages.splice(0, this.chatMessages.length - MAX_CHAT_MESSAGES);
+    }
     return { ok: true };
   }
 
@@ -964,12 +997,14 @@ class RoomRegistry {
   // disappears from the list.
   listPublic(): Array<{
     code: string;
+    roomName?: string;
     hostName: string;
     playerCount: number;
     spectatorCount: number;
   }> {
     const out: Array<{
       code: string;
+      roomName?: string;
       hostName: string;
       playerCount: number;
       spectatorCount: number;
@@ -980,6 +1015,7 @@ class RoomRegistry {
       const host = room.hostId ? room.players.find((p) => p.id === room.hostId) : null;
       out.push({
         code: room.joinCode,
+        roomName: room.roomName,
         hostName: host?.name ?? "?",
         playerCount: room.players.filter((p) => !p.spectating).length,
         spectatorCount: room.players.filter((p) => p.spectating).length,

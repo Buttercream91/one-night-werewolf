@@ -47,6 +47,9 @@ export interface PublicPlayer {
 
 export interface PublicRoom {
   code: string;
+  // Optional friendly name set by the host at create time. Shown in the
+  // public lobby browser and in the room header alongside the code.
+  name?: string;
   phase: Phase;
   // Server epoch ms at the moment this state was emitted. Clients use this to
   // compute a server-client clock offset so countdown timers don't drift if
@@ -61,6 +64,9 @@ export interface PublicRoom {
   // Set when new joiners should be force-locked to spectator on arrival.
   // Lets the host gate who can join the active player list.
   spectatorsAutoLock?: boolean;
+  // Recent lobby chat messages (capped). Only present in the lobby phase
+  // — cleared at game start.
+  chatMessages?: ChatMessage[];
   // Set when the host has hit "Mute all" — every non-host mic is gated off
   // so the host can make announcements without interruption.
   mutedExceptHost?: boolean;
@@ -305,7 +311,7 @@ export interface ServerToClient {
 
 export interface ClientToServer {
   "room:create": (
-    payload: { name: string; private?: boolean },
+    payload: { name: string; private?: boolean; roomName?: string },
     cb: (res: { ok: true; code: string; playerId: string } | { ok: false; error: string }) => void,
   ) => void;
   // Lightweight metadata listing for the public lobby browser. Server filters
@@ -314,12 +320,15 @@ export interface ClientToServer {
     cb: (res: {
       rooms: Array<{
         code: string;
+        roomName?: string;
         hostName: string;
         playerCount: number;
         spectatorCount: number;
       }>;
     }) => void,
   ) => void;
+  // Lobby-only chat. Server validates length + phase, appends to room.
+  "lobby:chat:send": (payload: { text: string }) => void;
   "note:add": (payload: { text: string }) => void;
   "note:remove": (payload: { index: number }) => void;
   "room:join": (

@@ -18,11 +18,23 @@ import type { Phase, PublicRoom } from "../shared/types.js";
 type PeerEntry = {
   pc: RTCPeerConnection;
   audioEl: HTMLAudioElement;
+  // Pre-allocated sender for the audio track. replaceTrack(track|null) lets
+  // us toggle our outgoing voice without SDP renegotiation, so existing
+  // connections stay stable when the user enables/disables mic.
+  audioSender: RTCRtpSender;
   manualVolume: number;
   manualMuted: boolean;
   // Set by applyAudioMask. Final element.muted = manualMuted || maskMuted.
   maskMuted: boolean;
 };
+
+// Set when a remote audio element's play() rejects (browser autoplay policy).
+// The UI shows a banner with a click handler that calls unblockAudio().
+let audioBlocked = false;
+const audioBlockedListeners = new Set<() => void>();
+function notifyAudioBlocked() {
+  for (const fn of audioBlockedListeners) fn();
+}
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -131,32 +143,35 @@ function getOrCreatePeer(peerId: string): PeerEntry {
   audioEl.style.display = "none";
   document.body.appendChild(audioEl);
 
+  // Always allocate a single sendrecv audio transceiver. This way mic
+  // toggling is just sender.replaceTrack(track|null) — no SDP renegotiation
+  // and no peer connection tear-down. New joiners get a working connection
+  // immediately, mic-enabled or not.
+  const transceiver = pc.addTransceiver("audio", { direction: "sendrecv" });
+  if (localStream) {
+    const track = localStream.getAudioTracks()[0];
+    if (track) {
+      transceiver.sender.replaceTrack(track).catch(() => {});
+    }
+  }
+
   const entry: PeerEntry = {
     pc,
     audioEl,
+    audioSender: transceiver.sender,
     manualVolume: 1,
     manualMuted: false,
     maskMuted: false,
   };
   peers.set(peerId, entry);
 
-  // Wire local tracks if we already have a mic. If we don't, explicitly add
-  // a receive-only audio transceiver so the SDP offer/answer carries an
-  // audio m-line — without this, a mic-less peer would either initiate an
-  // offer with no media (peer's tracks have nowhere to flow) or receive an
-  // offer and answer with no audio direction set.
-  if (localStream) {
-    for (const track of localStream.getAudioTracks()) {
-      pc.addTrack(track, localStream);
-    }
-  } else {
-    pc.addTransceiver("audio", { direction: "recvonly" });
-  }
-
   pc.ontrack = (ev) => {
     audioEl.srcObject = ev.streams[0];
     audioEl.play().catch(() => {
-      // Autoplay can be blocked until first user gesture; ignore.
+      // Autoplay blocked until a user gesture. Surface a banner so the
+      // user can tap to unblock.
+      audioBlocked = true;
+      notifyAudioBlocked();
     });
     // Start watching this peer's volume for the active-speaker indicator.
     startAnalyzer(peerId, ev.streams[0]);
@@ -228,11 +243,17 @@ export async function startMic(): Promise<{ ok: true } | { ok: false; error: str
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `Mic access denied: ${msg}` };
   }
-  // Tear down any listen-only peer connections we'd already established —
-  // the next syncPeers (after the server confirms hasMic=true) rebuilds
-  // them with our new tracks added at creation time. Avoids the SDP
-  // renegotiation dance.
-  for (const id of [...peers.keys()]) destroyPeer(id);
+  // Stream the new track over each peer's pre-allocated audio sender. No
+  // SDP renegotiation, no peer tear-down — the connection stays alive and
+  // peers just see our packets start flowing.
+  const track = localStream.getAudioTracks()[0];
+  if (track) {
+    for (const e of peers.values()) {
+      try {
+        await e.audioSender.replaceTrack(track);
+      } catch {}
+    }
+  }
   micEnabledState = true;
   // Watch our own mic level so our own tile pulses when we talk.
   if (myPlayerId) startAnalyzer(myPlayerId, localStream);
@@ -241,18 +262,21 @@ export async function startMic(): Promise<{ ok: true } | { ok: false; error: str
   return { ok: true };
 }
 
-export function stopMic(): void {
+export async function stopMic(): Promise<void> {
   if (myPlayerId) stopAnalyzer(myPlayerId);
+  // Detach our track from each peer's sender. The connection stays open so
+  // we can keep listening; peers just stop receiving our audio.
+  for (const e of peers.values()) {
+    try {
+      await e.audioSender.replaceTrack(null);
+    } catch {}
+  }
   if (localStream) {
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
   }
   micEnabledState = false;
   socket.emit("audio:setReady", { ready: false });
-  // Tear down peer connections — they were carrying our tracks. The next
-  // syncPeers rebuilds them as listen-only (we still hear the mic-enabled
-  // peers).
-  for (const id of [...peers.keys()]) destroyPeer(id);
   notify();
 }
 
@@ -261,13 +285,11 @@ export function micEnabled(): boolean {
 }
 
 // Called on every room state. Bring the peer set into line with the
-// current room: connect to mic-ready peers we don't have, drop peers who
-// are gone, and (re)apply the audio mask.
-//
-// Listen-only is supported: we form a peer connection whenever EITHER side
-// has a mic enabled, so a player without their mic still receives audio
-// from mic-enabled peers. With no mic on either side, there's nothing to
-// transmit, so we skip — saves a useless connection.
+// current room: connect to every connected player, drop peers who are
+// gone, and (re)apply the audio mask. Listen-only is the default — every
+// pair of players in the room maintains a stable mesh connection regardless
+// of who has mic enabled. Mic toggles are pure replaceTrack calls and
+// don't disrupt the mesh.
 export function syncPeers(room: PublicRoom): void {
   if (!myPlayerId) return;
 
@@ -275,8 +297,6 @@ export function syncPeers(room: PublicRoom): void {
   for (const p of room.players) {
     if (p.id === myPlayerId) continue;
     if (!p.connected) continue;
-    // At least one side must have mic for the connection to carry audio.
-    if (!p.hasMic && !micEnabledState) continue;
     wanted.add(p.id);
   }
 
@@ -425,6 +445,32 @@ export async function handleIce(from: string, candidate: RTCIceCandidateInit) {
   } catch {
     // Late ICE can fail harmlessly; ignore.
   }
+}
+
+// ---- Audio-block recovery (autoplay policy) ----
+
+// Called from a user gesture (click) to retry playing every remote audio
+// element. Once one play() succeeds the browser allows future ones too.
+export async function unblockAudio(): Promise<void> {
+  audioBlocked = false;
+  for (const e of peers.values()) {
+    try {
+      await e.audioEl.play();
+    } catch {}
+  }
+  notifyAudioBlocked();
+}
+
+export function useAudioBlocked(): boolean {
+  const [blocked, setBlocked] = useState(audioBlocked);
+  useEffect(() => {
+    const fn = () => setBlocked(audioBlocked);
+    audioBlockedListeners.add(fn);
+    return () => {
+      audioBlockedListeners.delete(fn);
+    };
+  }, []);
+  return blocked;
 }
 
 // ---- React hook for components that show mic state ----
