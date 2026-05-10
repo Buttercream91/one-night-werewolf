@@ -81,7 +81,11 @@ export function defaultActionFor(
     case "troublemaker":
       return { kind: "troublemaker_swap", targetIds: null };
     case "drunk": {
-      const idx = Math.floor(Math.random() * 3) as 0 | 1 | 2;
+      // Default to a random centre slot; range is set when the action is
+      // applied (caller passes the player record, which sees room state).
+      // We don't know the centre size here, so pick from the conservative 3.
+      // The applyNightAction validates against the actual length.
+      const idx = Math.floor(Math.random() * 3);
       return { kind: "drunk_swap", centerIndex: idx };
     }
     case "intro":
@@ -289,7 +293,11 @@ export function applyNightAction(
         room.actionLog.push({ kind: "lone_wolf_skipped", actorId: player.id });
         return { ok: true };
       }
-      if (![0, 1, 2].includes(action.centerIndex)) {
+      if (
+        !Number.isInteger(action.centerIndex) ||
+        action.centerIndex < 0 ||
+        action.centerIndex >= room.centerCards.length
+      ) {
         return { ok: false, error: "Invalid center index" };
       }
       const role = room.centerCards[action.centerIndex];
@@ -327,7 +335,9 @@ export function applyNightAction(
     case "seer_view_center": {
       if (step !== "seer" || !isEffective(player, "seer")) return { ok: false, error: "Not seer step" };
       const [a, b] = action.indices;
-      if (a === b || ![0, 1, 2].includes(a) || ![0, 1, 2].includes(b)) {
+      const len = room.centerCards.length;
+      const validIdx = (i: number) => Number.isInteger(i) && i >= 0 && i < len;
+      if (a === b || !validIdx(a) || !validIdx(b)) {
         return { ok: false, error: "Pick two distinct center cards" };
       }
       const cards = [
@@ -402,7 +412,13 @@ export function applyNightAction(
 
     case "drunk_swap": {
       if (step !== "drunk" || !isEffective(player, "drunk")) return { ok: false, error: "Not drunk step" };
-      if (![0, 1, 2].includes(action.centerIndex)) return { ok: false, error: "Invalid center index" };
+      if (
+        !Number.isInteger(action.centerIndex) ||
+        action.centerIndex < 0 ||
+        action.centerIndex >= room.centerCards.length
+      ) {
+        return { ok: false, error: "Invalid center index" };
+      }
       room.swapPlayerWithCenter(player.id, action.centerIndex);
       player.cardFaceDown = true;
       player.knownCurrentRole = undefined;

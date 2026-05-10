@@ -26,8 +26,13 @@ export function Lobby({ room, me }: Props) {
   const lobbyReadyIds = room.lobbyReadyIds ?? [];
   const nonHostActive = activePlayers.filter((p) => !p.isHost);
   const everyoneReady = nonHostActive.every((p) => lobbyReadyIds.includes(p.id));
+  // With the deck-size cap removed, any deck >= target works (extras land in
+  // the centre at deal time).
+  const deckSizeOk = room.removeCardLimit
+    ? room.selectedRoles.length >= targetCount
+    : room.selectedRoles.length === targetCount;
   const valid =
-    room.selectedRoles.length === targetCount &&
+    deckSizeOk &&
     activePlayers.length >= 3 &&
     activePlayers.length <= 10 &&
     everyoneReady;
@@ -136,27 +141,48 @@ export function Lobby({ room, me }: Props) {
                 ▶
               </span>
               Roles in deck
+              {room.removeCardLimit && (
+                <span className="ml-2 text-xs text-amber-400" title="Deck cap removed — extras populate the centre">
+                  ∞ unlimited
+                </span>
+              )}
             </h2>
             <p className="text-sm text-slate-400 mt-1">
-              Pick exactly{" "}
-              <span className={room.selectedRoles.length === targetCount ? "text-emerald-300" : "text-amber-300"}>
-                {targetCount}
-              </span>{" "}
-              cards: one per player + 3 center. Selected:{" "}
-              <span className="text-slate-100">{room.selectedRoles.length}</span>
+              {room.removeCardLimit ? (
+                <>
+                  Pick at least{" "}
+                  <span className={deckSizeOk ? "text-emerald-300" : "text-amber-300"}>
+                    {targetCount}
+                  </span>{" "}
+                  cards (one per player + at least 3 centre — extras go to the centre).
+                  Selected: <span className="text-slate-100">{room.selectedRoles.length}</span>
+                </>
+              ) : (
+                <>
+                  Pick exactly{" "}
+                  <span className={deckSizeOk ? "text-emerald-300" : "text-amber-300"}>
+                    {targetCount}
+                  </span>{" "}
+                  cards: one per player + 3 centre. Selected:{" "}
+                  <span className="text-slate-100">{room.selectedRoles.length}</span>
+                </>
+              )}
             </p>
           </div>
           {isHost && (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                randomise();
-              }}
-              className="btn-ghost text-sm"
-            >
-              Randomise
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  randomise();
+                }}
+                className="btn-ghost text-sm"
+              >
+                Randomise
+              </button>
+              <RolesDeckHostMenu room={room} />
+            </div>
           )}
         </summary>
 
@@ -396,6 +422,78 @@ function LobbySpectatorTile({
       </div>
       {!player.connected && <span className="text-xs">offline</span>}
     </li>
+  );
+}
+
+function RolesDeckHostMenu({ room }: { room: PublicRoom }) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    function reposition() {
+      const btn = buttonRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuWidth = 256;
+      const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, r.right - menuWidth));
+      const top = r.bottom + 4;
+      setPos({ top, left });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        className="text-slate-400 hover:text-slate-200 px-1 leading-none"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title="Deck options"
+      >
+        ⋯
+      </button>
+      {open && pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[99999] isolate w-64 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            <CheckRow
+              label="Remove card limit"
+              checked={!!room.removeCardLimit}
+              onToggle={() => send.setRemoveCardLimit(!room.removeCardLimit)}
+              note="Allow more than (players + 3) cards. Extras populate the centre, growing the unknown pool."
+            />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

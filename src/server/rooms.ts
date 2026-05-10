@@ -88,6 +88,10 @@ export class Room {
   // on, spectators get no card/role/notes/centre data — only the public room
   // state. Stops a spectator next to a player from leaking the game.
   spectatorsBlind = false;
+  // Host-toggled flag: when true, the deck size validation in startGame
+  // accepts any size >= active players + 3 instead of requiring exact match.
+  // Extras are dealt into the centre, growing the unknown pool.
+  removeCardLimit = false;
 
   // Game-time:
   centerCards: Role[] = [];
@@ -218,7 +222,14 @@ export class Room {
     const numPlayers = activePlayers.length;
     if (numPlayers < 3) return { ok: false, error: "Need at least 3 active players" };
     if (numPlayers > 10) return { ok: false, error: "Maximum 10 active players" };
-    if (this.selectedRoles.length !== numPlayers + 3) {
+    if (this.removeCardLimit) {
+      if (this.selectedRoles.length < numPlayers + 3) {
+        return {
+          ok: false,
+          error: `Need at least ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
+        };
+      }
+    } else if (this.selectedRoles.length !== numPlayers + 3) {
       return {
         ok: false,
         error: `Need exactly ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
@@ -257,7 +268,10 @@ export class Room {
     activePlayers.forEach((p, i) => {
       p.originalRole = deck[i];
     });
-    this.centerCards = deck.slice(numPlayers, numPlayers + 3);
+    // Whatever's left after dealing to players goes to the centre. Default
+    // is exactly 3 (deck = N+3); when removeCardLimit was on the centre can
+    // be larger.
+    this.centerCards = deck.slice(numPlayers);
     this.originalCenterCards = this.centerCards.slice();
     this.currentRoles.clear();
     for (const p of activePlayers) {
@@ -507,6 +521,8 @@ export class Room {
       spectatorsAutoLock: this.spectatorsAutoLock || undefined,
       mutedExceptHost: this.mutedExceptHost || undefined,
       spectatorsBlind: this.spectatorsBlind || undefined,
+      removeCardLimit: this.removeCardLimit || undefined,
+      centerCardCount: this.phase !== "lobby" ? this.centerCards.length : undefined,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -670,6 +686,15 @@ export class Room {
   setSpectatorsBlind(hostId: string, blind: boolean): ActionResult {
     if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
     this.spectatorsBlind = blind;
+    return { ok: true };
+  }
+
+  setRemoveCardLimit(hostId: string, remove: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (this.phase !== "lobby") {
+      return { ok: false, error: "Only configurable in the lobby" };
+    }
+    this.removeCardLimit = remove;
     return { ok: true };
   }
 

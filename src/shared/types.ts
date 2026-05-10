@@ -71,7 +71,14 @@ export interface PublicRoom {
   spectatorsBlind?: boolean;
   players: PublicPlayer[];
   // Lobby:
-  selectedRoles: Role[]; // multiset; length must equal players.length + 3
+  selectedRoles: Role[]; // multiset; default length must equal active players + 3
+  // Host has lifted the deck-size cap. With the limit removed, the deck can
+  // exceed the active-player + 3 default — extras land in the centre at deal
+  // time, so fewer-player games can still draw from a larger pool.
+  removeCardLimit?: boolean;
+  // Number of cards in the centre once the round begins. 3 by default, or
+  // more when removeCardLimit was on at start.
+  centerCardCount?: number;
   // IDs of non-host players who pressed Ready in the lobby. Host can't start
   // until everyone else here is checked off.
   lobbyReadyIds?: string[];
@@ -113,13 +120,13 @@ export interface Accusation {
 export type ActionLogEntry =
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
-  | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: 0 | 1 | 2; role: Role }
+  | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
   | { kind: "lone_wolf_skipped"; actorId: string }
   | { kind: "minion_saw_werewolves"; actorId: string; werewolfIds: string[] }
   | { kind: "masons_revealed"; actorIds: string[] }
   | { kind: "lone_mason"; actorId: string }
   | { kind: "seer_saw_player"; actorId: string; targetId: string; role: Role }
-  | { kind: "seer_saw_center"; actorId: string; cards: Array<{ index: 0 | 1 | 2; role: Role }> }
+  | { kind: "seer_saw_center"; actorId: string; cards: Array<{ index: number; role: Role }> }
   | { kind: "seer_skipped"; actorId: string }
   // newRole = role the actor now holds (target's old role).
   // targetNewRole = role the target now holds (always the actor's old role,
@@ -142,7 +149,7 @@ export type ActionLogEntry =
       newRoles: [Role, Role];
     }
   | { kind: "troublemaker_skipped"; actorId: string }
-  | { kind: "drunk_swapped"; actorId: string; centerIndex: 0 | 1 | 2 }
+  | { kind: "drunk_swapped"; actorId: string; centerIndex: number }
   | { kind: "insomniac_saw"; actorId: string; role: Role }
   | { kind: "vote"; voterId: string; targetId: string | "no_kill" }
   | { kind: "killed"; targetId: string; via: "vote" | "hunter" }
@@ -217,12 +224,12 @@ export interface SpectatorVision {
 export type NightNote =
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
-  | { kind: "lone_wolf_center"; index: 0 | 1 | 2; role: Role }
+  | { kind: "lone_wolf_center"; index: number; role: Role }
   | { kind: "minion_sees_werewolves"; playerIds: string[] }
   | { kind: "fellow_mason"; playerIds: string[] }
   | { kind: "no_other_masons" }
   | { kind: "seer_player"; playerId: string; role: Role }
-  | { kind: "seer_center"; cards: Array<{ index: 0 | 1 | 2; role: Role }> }
+  | { kind: "seer_center"; cards: Array<{ index: number; role: Role }> }
   | { kind: "robber_new_role"; targetId: string; role: Role }
   // Troublemaker doesn't see what the swapped roles are; the note is just a
   // record of which two players' cards they swapped, so they can reference
@@ -247,13 +254,13 @@ export type NightPrompt =
 export type NightAction =
   | { kind: "ack" } // For roles with no choice (Werewolf seeing pack, Minion, Mason, Insomniac).
   | { kind: "doppelganger_copy"; targetId: string }
-  | { kind: "werewolf_lone_view"; centerIndex: 0 | 1 | 2 | null } // null = skip
+  | { kind: "werewolf_lone_view"; centerIndex: number | null } // null = skip
   | { kind: "seer_view_player"; targetId: string }
-  | { kind: "seer_view_center"; indices: [0 | 1 | 2, 0 | 1 | 2] }
+  | { kind: "seer_view_center"; indices: [number, number] }
   | { kind: "seer_skip" }
   | { kind: "robber_swap"; targetId: string | null } // null = skip
   | { kind: "troublemaker_swap"; targetIds: [string, string] | null }
-  | { kind: "drunk_swap"; centerIndex: 0 | 1 | 2 };
+  | { kind: "drunk_swap"; centerIndex: number };
 
 export interface ChatMessage {
   id: string;
@@ -329,6 +336,8 @@ export interface ClientToServer {
   // Pick a color from PLAYER_COLOR_IDS. Server rejects if the color is
   // already used by another player in the room.
   "lobby:setColor": (payload: { color: string }) => void;
+  // Host toggles the "deck can exceed players + 3" allowance.
+  "lobby:setRemoveCardLimit": (payload: { remove: boolean }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
   // Host force-spectates a player (spectating=true) or releases them

@@ -148,6 +148,14 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:setRemoveCardLimit", ({ remove }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setRemoveCardLimit(attachedPlayerId, !!remove);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("lobby:ready", ({ ready }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

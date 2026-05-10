@@ -105,7 +105,7 @@ export function VotePhase({ room, me }: Props) {
         </div>
       </div>
 
-      <CenterCards me={me} mode="view" selected={[]} setSelected={() => {}} />
+      <CenterCards me={me} room={room} mode="view" selected={[]} setSelected={() => {}} />
     </div>
   );
 }

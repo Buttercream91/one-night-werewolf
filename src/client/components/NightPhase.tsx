@@ -67,6 +67,7 @@ export function NightPhase({ room, me }: Props) {
 
       <CenterCards
         me={me}
+        room={room}
         mode={centerMode}
         selected={centerSelections}
         setSelected={setCenterSelections}
