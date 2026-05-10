@@ -33,10 +33,15 @@ export function clearSession() {
 
 // Per-player narrator preference. Stored in localStorage so it persists
 // across sessions on the same device. Falls back to DEFAULT_VOICE_PACK
-// in callers if unset.
+// in callers if unset or pointing at a pack that no longer exists (so a
+// stale pref like "brian" doesn't keep trying to play files we removed).
+import { VOICE_PACKS } from "../shared/types.js";
+
 export function loadNarrator(): string | null {
   try {
-    return localStorage.getItem(NARRATOR_KEY);
+    const id = localStorage.getItem(NARRATOR_KEY);
+    if (id && VOICE_PACKS.some((p) => p.id === id)) return id;
+    return null;
   } catch {
     return null;
   }

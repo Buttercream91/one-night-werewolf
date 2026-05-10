@@ -353,10 +353,10 @@ export const VOICE_PACKS: VoicePack[] = [
     ttsVoiceId: "pqHfZKP75CvOlQylNhV4",
   },
   {
-    id: "brian",
-    label: "Brian",
-    blurb: "Deep American narrator",
-    ttsVoiceId: "nPczCjzI2devNBz1zQrb",
+    id: "malthrog",
+    label: "Malthrog the Beheader",
+    blurb: "Menacing executioner",
+    ttsVoiceId: "YndTyB92pean24jyJtY1",
   },
   {
     id: "faolan",
