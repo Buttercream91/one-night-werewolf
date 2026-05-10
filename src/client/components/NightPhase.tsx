@@ -6,6 +6,7 @@ import { send } from "../socket.js";
 import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
 import { CenterCards, type CenterMode } from "./CenterCards.js";
+import { NightProgressPanel } from "./NightProgressPanel.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
 
@@ -53,6 +54,8 @@ export function NightPhase({ room, me }: Props) {
           </div>
         </div>
       </div>
+
+      <NightProgressPanel selectedRoles={room.selectedRoles} currentStep={room.nightStep} />
 
       <div className="panel text-center">
         {room.nightStep && (
