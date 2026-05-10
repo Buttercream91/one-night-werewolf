@@ -106,6 +106,11 @@ export function Lobby({ room, me }: Props) {
                 🔒 auto-lock
               </span>
             )}
+            {room.spectatorsBlind && (
+              <span className="ml-1 text-xs text-amber-400" title="Spectators can't see game state">
+                🙈 blind
+              </span>
+            )}
           </h2>
           {isHost && <SpectatorsHostMenu room={room} />}
         </div>
@@ -426,6 +431,12 @@ function SpectatorsHostMenu({ room }: { room: PublicRoom }) {
             checked={!!room.spectatorsAutoLock}
             onToggle={() => send.setSpectatorsAutoLock(!room.spectatorsAutoLock)}
             note="New joiners arrive locked. You release them via their tile menu."
+          />
+          <CheckRow
+            label="Hide game state from spectators"
+            checked={!!room.spectatorsBlind}
+            onToggle={() => send.setSpectatorsBlind(!room.spectatorsBlind)}
+            note="Spectators see only public info — no cards, notes, or centre. Stops a spectator next to a player from leaking the game."
           />
         </div>
       )}

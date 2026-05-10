@@ -28,6 +28,7 @@ export function SpectatorView({ room, me }: Props) {
   const vision = me.spectatorVision;
   // Quick lookup of the live data per active player.
   const visionById = new Map(vision?.players.map((v) => [v.id, v]));
+  const visionHidden = !!room.spectatorsBlind;
 
   return (
     <div className="space-y-6">
@@ -36,14 +37,20 @@ export function SpectatorView({ room, me }: Props) {
           <div>
             <h2 className="heading text-xl text-slate-300">Spectating</h2>
             <p className="text-sm text-slate-400 mt-1">
-              You're watching this round. You see every active player's actual current card —
-              click a name to expand their notes.
+              {visionHidden
+                ? "You're watching this round. The host has hidden the game state — you can see who's ready or voted, but not their cards or notes."
+                : "You're watching this round. You see every active player's actual current card — click a name to expand their notes."}
             </p>
           </div>
           <span className="text-xs uppercase tracking-wider text-indigo-300 px-2 py-1 rounded border border-indigo-700 bg-indigo-950/50">
             {phaseLabel}
           </span>
         </div>
+        {visionHidden && (
+          <div className="mt-3 text-xs text-amber-300">
+            🙈 Game state hidden by the host
+          </div>
+        )}
         {room.phase === "night" && (
           <div className="mt-3 text-sm text-slate-400">
             <span className="font-mono text-slate-200">{nightRemaining}s</span> until the next

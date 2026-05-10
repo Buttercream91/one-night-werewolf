@@ -84,6 +84,10 @@ export class Room {
   // Host-only "announcement mode" — everyone but the host has their mic
   // gated off. Used to silence the room while the host speaks.
   mutedExceptHost = false;
+  // Host-toggled flag to suppress spectatorVision in PrivateView. With this
+  // on, spectators get no card/role/notes/centre data — only the public room
+  // state. Stops a spectator next to a player from leaking the game.
+  spectatorsBlind = false;
 
   // Game-time:
   centerCards: Role[] = [];
@@ -502,6 +506,7 @@ export class Room {
       privateRoom: this.privateRoom || undefined,
       spectatorsAutoLock: this.spectatorsAutoLock || undefined,
       mutedExceptHost: this.mutedExceptHost || undefined,
+      spectatorsBlind: this.spectatorsBlind || undefined,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -552,7 +557,10 @@ export class Room {
     };
     // Spectators see the full table while a round is in progress: every
     // active player's current role + their personal notes, plus the centre.
-    if (p.spectating && this.phase !== "lobby") {
+    // Suppressed entirely when the host has hidden game state from
+    // spectators (anti-cheat — stops a spectator from leaking to a player
+    // sitting next to them).
+    if (p.spectating && this.phase !== "lobby" && !this.spectatorsBlind) {
       view.spectatorVision = {
         players: this.players
           .filter((q) => !q.spectating && q.originalRole != null)
@@ -656,6 +664,12 @@ export class Room {
   setMutedExceptHost(hostId: string, muted: boolean): ActionResult {
     if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
     this.mutedExceptHost = muted;
+    return { ok: true };
+  }
+
+  setSpectatorsBlind(hostId: string, blind: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    this.spectatorsBlind = blind;
     return { ok: true };
   }
 

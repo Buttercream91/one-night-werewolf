@@ -64,6 +64,11 @@ export interface PublicRoom {
   // Set when the host has hit "Mute all" — every non-host mic is gated off
   // so the host can make announcements without interruption.
   mutedExceptHost?: boolean;
+  // Set when the host has hidden the game state from spectators. Spectators
+  // see only the public room data (player names, ready/vote status,
+  // accusations) — no current roles, no notes, no centre cards. Used to
+  // stop spectators from leaking info to nearby players.
+  spectatorsBlind?: boolean;
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3
@@ -333,6 +338,8 @@ export interface ClientToServer {
   "lobby:setSpectatorsAutoLock": (payload: { autoLock: boolean }) => void;
   // Host toggles "mute everyone except me" for announcement mode.
   "lobby:muteAllExceptHost": (payload: { muted: boolean }) => void;
+  // Host toggles whether spectators see game state (cards, notes, centre).
+  "lobby:setSpectatorsBlind": (payload: { blind: boolean }) => void;
   // Host fires a ready-check announcement — server fans out a room:announce
   // to every connected client, which plays the matching narrator clip.
   "lobby:announceReadyCheck": () => void;

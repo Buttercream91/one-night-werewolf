@@ -206,6 +206,14 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:setSpectatorsBlind", ({ blind }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setSpectatorsBlind(attachedPlayerId, !!blind);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("lobby:announceReadyCheck", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
