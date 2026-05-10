@@ -3,6 +3,7 @@ services:
     name: one-night-werewolf
     runtime: node
     plan: free
+    region: singapore
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     envVars:
