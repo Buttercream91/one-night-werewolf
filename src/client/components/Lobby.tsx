@@ -1,0 +1,325 @@
+import { useMemo, useRef } from "react";
+import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
+import { ALL_ROLES, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
+import { send } from "../socket.js";
+import { CopyableCode } from "./CopyableCode.js";
+import { ROLE_IMAGE } from "./RoleCard.js";
+
+interface Props {
+  room: PublicRoom;
+  me: PrivateView | null;
+}
+
+export function Lobby({ room, me }: Props) {
+  const isHost = useMemo(
+    () => !!me && room.players.find((p) => p.id === me.myId)?.isHost,
+    [room, me],
+  );
+  const targetCount = room.players.length + 3;
+  const valid =
+    room.selectedRoles.length === targetCount &&
+    room.players.length >= 3 &&
+    room.players.length <= 10;
+
+  const counts: Partial<Record<Role, number>> = {};
+  for (const r of room.selectedRoles) counts[r] = (counts[r] ?? 0) + 1;
+
+  function setCount(role: Role, n: number) {
+    if (!isHost) return;
+    const next = room.selectedRoles.filter((r) => r !== role);
+    for (let i = 0; i < n; i++) next.push(role);
+    send.setRoles(next);
+  }
+
+  function randomise() {
+    if (!isHost) return;
+    send.setRoles(randomDeck(room.players.length));
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="panel">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="heading text-xl text-indigo-200">Players</h2>
+            <p className="text-sm text-slate-400">
+              Share the code <CopyableCode code={room.code} className="text-slate-100" /> with your
+              friends. {room.players.length}/10 in the room.
+            </p>
+          </div>
+        </div>
+        <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {room.players.map((p) => (
+            <li
+              key={p.id}
+              className={`rounded-md border px-3 py-2 text-sm ${
+                p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
+              }`}
+            >
+              <span className="font-medium">{p.name}</span>
+              {p.isHost && <span className="ml-2 text-xs text-amber-300">host</span>}
+              {!p.connected && <span className="ml-2 text-xs">offline</span>}
+              {me?.myId === p.id && <span className="ml-2 text-xs text-indigo-300">you</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <VoicePackPicker room={room} me={me} />
+
+      <div className="panel">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="heading text-xl text-indigo-200">Roles in deck</h2>
+            <p className="text-sm text-slate-400">
+              Pick exactly{" "}
+              <span className={room.selectedRoles.length === targetCount ? "text-emerald-300" : "text-amber-300"}>
+                {targetCount}
+              </span>{" "}
+              cards: one per player + 3 center. Selected:{" "}
+              <span className="text-slate-100">{room.selectedRoles.length}</span>
+            </p>
+          </div>
+          {isHost && (
+            <button onClick={randomise} className="btn-ghost text-sm">
+              Randomise
+            </button>
+          )}
+        </div>
+
+        <ul className="mt-4 grid lg:grid-cols-2 gap-3">
+          {ALL_ROLES.map((role) => {
+            const meta = ROLE_META[role];
+            const n = counts[role] ?? 0;
+            return (
+              <li
+                key={role}
+                className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-slate-100">{meta.label}</span>
+                    <TeamPill team={meta.team} />
+                    {n > 0 && <span className="text-xs text-emerald-300">×{n}</span>}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  {Array.from({ length: meta.maxCount }).map((_, slotIdx) => {
+                    const isOn = slotIdx < n;
+                    // The first Werewolf is always required — render it
+                    // selected and non-clickable so the count can't drop to 0.
+                    const locked = role === "werewolf" && slotIdx === 0;
+                    return (
+                      <button
+                        key={slotIdx}
+                        disabled={!isHost || locked}
+                        onClick={() => setCount(role, isOn ? n - 1 : n + 1)}
+                        title={
+                          locked
+                            ? "Werewolf is required — at least one must stay in the deck"
+                            : isOn
+                              ? "Click to remove"
+                              : "Click to add"
+                        }
+                        className={`relative w-14 h-20 rounded-md overflow-hidden border-2 transition-all ${
+                          isOn
+                            ? "border-indigo-400 opacity-100 hover:scale-[1.04]"
+                            : "border-slate-700 opacity-30 hover:opacity-70 hover:scale-[1.04]"
+                        } ${locked ? "cursor-default hover:scale-100" : ""} disabled:hover:scale-100 disabled:cursor-not-allowed`}
+                      >
+                        <img
+                          src={ROLE_IMAGE[role]}
+                          alt={meta.label}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {locked && (
+                          <span className="absolute top-1 right-1 rounded-sm bg-slate-950/80 px-1 text-[10px] text-slate-300">
+                            🔒
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="panel flex flex-col sm:flex-row sm:items-end gap-4">
+        <label className="flex-1">
+          <span className="block text-sm text-slate-300 mb-1">Day phase length (seconds)</span>
+          <input
+            type="number"
+            min={60}
+            max={900}
+            step={30}
+            value={room.daySeconds}
+            disabled={!isHost}
+            onChange={(e) => send.setDaySeconds(Number(e.target.value))}
+            className="input max-w-[10rem]"
+          />
+          <span className="ml-2 text-xs text-slate-400">60–900 seconds</span>
+        </label>
+        <div className="flex-1 flex items-center justify-end gap-3">
+          {isHost && (
+            <span className="text-sm">
+              <span className="text-slate-400">Cards selected </span>
+              <span
+                className={`font-mono tabular-nums ${
+                  room.selectedRoles.length === targetCount
+                    ? "text-emerald-300"
+                    : room.selectedRoles.length > targetCount
+                      ? "text-rose-300"
+                      : "text-slate-400"
+                }`}
+              >
+                {room.selectedRoles.length}/{targetCount}
+              </span>
+            </span>
+          )}
+          {isHost ? (
+            <button
+              className="btn-primary"
+              disabled={!valid}
+              onClick={() => send.start()}
+              title={
+                valid
+                  ? "Start the game"
+                  : `Need ${targetCount} role cards and 3+ players to start`
+              }
+            >
+              Start game
+            </button>
+          ) : (
+            <span className="text-sm text-slate-400">Waiting for host to start…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VoicePackPicker({ room, me }: { room: PublicRoom; me: PrivateView | null }) {
+  // Tally votes per pack so the lobby shows the running winner.
+  const counts: Record<string, number> = {};
+  for (const p of room.players) {
+    if (p.voicePackVote) counts[p.voicePackVote] = (counts[p.voicePackVote] ?? 0) + 1;
+  }
+  const myVote = me ? room.players.find((p) => p.id === me.myId)?.voicePackVote : undefined;
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  if (audioRef.current === null && typeof Audio !== "undefined") {
+    audioRef.current = new Audio();
+  }
+  function preview(packId: string) {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.src = `/voice/${packId}/Intro.mp3`;
+    audioRef.current.play().catch(() => {
+      // Autoplay/missing-file: silent fallback.
+    });
+  }
+
+  return (
+    <div className="panel">
+      <h2 className="heading text-xl text-indigo-200">Narrator voice</h2>
+      <p className="text-sm text-slate-400 mt-1">
+        Each player picks a voice. Most votes wins (currently leading:{" "}
+        <span className="text-slate-200">
+          {VOICE_PACKS.find((v) => v.id === room.voicePack)?.label ?? room.voicePack}
+        </span>
+        ).
+      </p>
+      <ul className="mt-4 grid sm:grid-cols-2 gap-2">
+        {VOICE_PACKS.map((pack) => {
+          const tally = counts[pack.id] ?? 0;
+          const mine = myVote === pack.id;
+          return (
+            <li
+              key={pack.id}
+              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
+                mine
+                  ? "border-indigo-500 bg-indigo-950/40"
+                  : "border-slate-700 bg-slate-900/40"
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="font-medium text-slate-100">
+                  {pack.label}{" "}
+                  <span className="text-xs text-slate-400">— {pack.blurb}</span>
+                </div>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  {tally} {tally === 1 ? "vote" : "votes"}
+                </div>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  className="btn-ghost text-xs px-2 py-1"
+                  onClick={() => preview(pack.id)}
+                  title="Preview the intro line"
+                >
+                  ▶ Preview
+                </button>
+                <button
+                  className={mine ? "btn-primary text-xs px-2 py-1" : "btn-ghost text-xs px-2 py-1"}
+                  onClick={() => send.voteVoicePack(pack.id)}
+                >
+                  {mine ? "Voted" : "Vote"}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function TeamPill({ team }: { team: "werewolf" | "villager" | "tanner" }) {
+  const cls =
+    team === "werewolf"
+      ? "bg-rose-950 border-rose-800 text-rose-300"
+      : team === "tanner"
+        ? "bg-amber-950 border-amber-800 text-amber-300"
+        : "bg-emerald-950 border-emerald-800 text-emerald-300";
+  return <span className={`text-xs rounded border px-1.5 py-0.5 ${cls}`}>{team}</span>;
+}
+
+// Pick a random deck whose total card count equals players + 3, respecting
+// each role's max count. Retries if the picked deck has a Minion with no
+// Werewolf (server would reject that combo).
+function randomDeck(numPlayers: number): Role[] {
+  const target = numPlayers + 3;
+  const pool: Role[] = [];
+  for (const role of ALL_ROLES) {
+    for (let i = 0; i < ROLE_META[role].maxCount; i++) pool.push(role);
+  }
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const shuffled = shuffle(pool.slice()).slice(0, target);
+    const hasMinion = shuffled.includes("minion");
+    const hasWerewolf = shuffled.includes("werewolf");
+    // At least one Werewolf is mandatory; Minion needs a Werewolf too.
+    if (hasWerewolf && (!hasMinion || hasWerewolf)) return shuffled;
+  }
+  // Fallback: force a Werewolf into a fresh shuffle and drop something else.
+  const fallback = shuffle(pool.slice()).slice(0, target);
+  if (!fallback.includes("werewolf")) {
+    fallback[0] = "werewolf";
+  }
+  if (fallback.includes("minion") && !fallback.includes("werewolf")) {
+    fallback[fallback.indexOf("minion")] = "villager";
+  }
+  return fallback;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}

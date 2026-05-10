@@ -1,0 +1,138 @@
+// Generates the night-phase voice pack(s) using ElevenLabs.
+// Requires env var ELEVENLABS_API_KEY (free tier ~10k chars/month).
+//
+// Run with:
+//   $env:ELEVENLABS_API_KEY = "..."   # PowerShell, current session
+//   npm run voice:gen                  # generate every pack listed in VOICE_PACKS
+//   npm run voice:gen -- brian         # only the brian pack
+//   npm run voice:gen -- --force       # regenerate even if file exists
+//
+// Files land at public/voice/<packId>/<Clip>.mp3.
+// On first run, any pre-existing public/voice/*.mp3 files are moved into the
+// "brian" subdir so the previous generation is preserved without duplicate cost.
+
+import fs from "node:fs";
+import path from "node:path";
+import { VOICE_PACKS } from "../src/shared/types.js";
+
+const API_KEY = process.env.ELEVENLABS_API_KEY;
+if (!API_KEY) {
+  console.error('ELEVENLABS_API_KEY env var not set. Run: $env:ELEVENLABS_API_KEY = "your-key"');
+  process.exit(1);
+}
+
+const args = process.argv.slice(2);
+const FORCE = args.includes("--force");
+const PACK_FILTER = args.filter((a) => !a.startsWith("--"));
+
+const MODEL = "eleven_turbo_v2_5";
+const VOICE_SETTINGS = {
+  stability: 0.6,
+  similarity_boost: 0.75,
+  style: 0.35,
+  use_speaker_boost: true,
+};
+const ROOT_VOICE_DIR = path.resolve("public/voice");
+
+const CLIPS: Record<string, string> = {
+  Intro: "Everyone, close your eyes. The night begins.",
+  Doppelganger:
+    "Doppelganger, wake up and look at another player's card. You are now a copy of that role.",
+  Werewolves:
+    "Werewolves, wake up and look for other werewolves. If you are the only werewolf, you may look at one card from the center.",
+  Minion:
+    "Minion, wake up. Werewolves, hold out your thumbs so the minion can see you. Minion, look for the werewolves. Werewolves, put your thumbs back down.",
+  Mason: "Masons, wake up and look for other masons.",
+  Seer: "Seer, wake up. You may look at another player's card, or look at two cards from the center.",
+  Robber:
+    "Robber, wake up. You may exchange your card with another player's card, then look at your new card.",
+  Troublemaker:
+    "Troublemaker, wake up. You may switch the cards of two other players without looking at them.",
+  Drunk: "Drunk, wake up and exchange your card with one of the cards in the center.",
+  Insomniac: "Insomniac, wake up and look at your card.",
+  Outro: "Everyone, wake up. The night is over.",
+  BeginVote: "It's time to vote. Choose a player to kill.",
+  WerewolvesWin: "The Werewolves win!",
+  VillagersWin: "The Villagers win!",
+  TannerWins: "The Tanner wins!",
+};
+
+async function generate() {
+  fs.mkdirSync(ROOT_VOICE_DIR, { recursive: true });
+  migrateLooseFilesIntoBrian();
+
+  const packs = PACK_FILTER.length
+    ? VOICE_PACKS.filter((p) => PACK_FILTER.includes(p.id))
+    : VOICE_PACKS;
+  if (packs.length === 0) {
+    console.error(`No matching packs. Known: ${VOICE_PACKS.map((p) => p.id).join(", ")}`);
+    process.exit(1);
+  }
+
+  for (const pack of packs) {
+    const dir = path.join(ROOT_VOICE_DIR, pack.id);
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`\n[${pack.id}] ${pack.label}`);
+    let failed = 0;
+    for (const [name, text] of Object.entries(CLIPS)) {
+      const outFile = path.join(dir, `${name}.mp3`);
+      if (!FORCE && fs.existsSync(outFile)) {
+        console.log(`  ${name}.mp3 ... cached`);
+        continue;
+      }
+      process.stdout.write(`  ${name}.mp3 ... `);
+      try {
+        const buf = await synthesize(pack.ttsVoiceId, text);
+        fs.writeFileSync(outFile, buf);
+        process.stdout.write(`${(buf.length / 1024).toFixed(1)} KB\n`);
+      } catch (err: any) {
+        failed++;
+        process.stdout.write(`FAILED — ${err.message}\n`);
+      }
+    }
+    if (failed > 0) {
+      console.log(`  ⚠ ${failed} clip(s) failed for ${pack.id} — voice id may need a paid plan.`);
+    }
+  }
+  console.log("\nDone.");
+}
+
+async function synthesize(voiceId: string, text: string): Promise<Buffer> {
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xi-api-key": API_KEY!,
+      "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify({ text, model_id: MODEL, voice_settings: VOICE_SETTINGS }),
+  });
+  if (!res.ok) {
+    throw new Error(`ElevenLabs ${res.status}: ${await res.text()}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// First-run migration: if previous generations live at public/voice/*.mp3
+// (no subdir), move them under public/voice/brian/ so they're not lost.
+function migrateLooseFilesIntoBrian() {
+  const loose = fs
+    .readdirSync(ROOT_VOICE_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".mp3"));
+  if (loose.length === 0) return;
+  const target = path.join(ROOT_VOICE_DIR, "brian");
+  fs.mkdirSync(target, { recursive: true });
+  for (const f of loose) {
+    const src = path.join(ROOT_VOICE_DIR, f);
+    const dst = path.join(target, f);
+    if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+    else fs.unlinkSync(src);
+  }
+  console.log(`Migrated ${loose.length} loose mp3s to public/voice/brian/`);
+}
+
+generate().catch((err) => {
+  console.error("Failed:", err.message);
+  process.exit(1);
+});
