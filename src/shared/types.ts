@@ -189,6 +189,9 @@ export interface ServerToClient {
   "error": (payload: { message: string }) => void;
   // Lightweight notification of room joining success — gives the client its id.
   "joined": (payload: { roomCode: string; playerId: string; name: string }) => void;
+  // Sent to a player who was kicked by the host. The client clears its
+  // session and returns to the home screen.
+  "kicked": (payload: { reason: string }) => void;
 }
 
 export interface ClientToServer {
@@ -206,6 +209,7 @@ export interface ClientToServer {
   "lobby:setRoles": (payload: { roles: Role[] }) => void;
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
+  "lobby:kick": (payload: { playerId: string }) => void;
   "lobby:start": () => void;
   "night:action": (payload: NightAction) => void;
   "day:ready": (payload: { ready: boolean }) => void;

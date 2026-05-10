@@ -51,7 +51,13 @@ export interface ServerPlayer {
 type ActionResult = { ok: true } | { ok: false; error: string };
 
 export class Room {
+  // Stable internal identifier — used as the registry key, the socket.io room
+  // name, and the broadcast target. Never changes for the lifetime of the room.
   code: string;
+  // Public code that players type to join. Initially equals `code`; rotates
+  // when the host kicks a player so the kicked player can't rejoin with the
+  // code they have. Always uppercase A–Z (no vowels).
+  joinCode: string;
   io: IO;
   hostId: string | null = null;
   phase: Phase = "lobby";
@@ -78,6 +84,7 @@ export class Room {
 
   constructor(code: string, io: IO) {
     this.code = code;
+    this.joinCode = code;
     this.io = io;
   }
 
@@ -368,7 +375,7 @@ export class Room {
     const isReveal = this.phase === "reveal";
     const isVoting = this.phase === "vote";
     return {
-      code: this.code,
+      code: this.joinCode,
       phase: this.phase,
       serverNow: Date.now(),
       players: this.players.map((p) => ({
@@ -469,6 +476,30 @@ export class Room {
     if (!p) return;
     p.lobbyReady = ready;
   }
+
+  // Host kicks a player from the lobby. Removes them from the room, notifies
+  // their socket so the client can clear its session, and rotates the join
+  // code so the kicked player (or anyone they've shared the code with) can't
+  // rejoin with the old code.
+  kickPlayer(hostId: string, targetId: string): ActionResult {
+    if (this.phase !== "lobby") return { ok: false, error: "Can only kick from the lobby" };
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can kick" };
+    if (hostId === targetId) return { ok: false, error: "Host can't kick themselves" };
+    const target = this.players.find((p) => p.id === targetId);
+    if (!target) return { ok: false, error: "Player not in this room" };
+
+    // Tell the target client and disconnect them from this room. The socket
+    // stays alive (so the kicked event lands) — we just take them out of the
+    // socket.io room and the players list.
+    this.io.to(target.socketId).emit("kicked", { reason: "You were removed by the host." });
+    const sock = this.io.sockets.sockets.get(target.socketId);
+    if (sock) sock.leave(this.code);
+    this.removePlayer(targetId);
+
+    // Rotate the join code so the kicked player can't reuse it.
+    rooms.rotateJoinCode(this);
+    return { ok: true };
+  }
 }
 
 function nextNightStep(step: NightStep): NightStep | undefined {
@@ -479,7 +510,11 @@ function nextNightStep(step: NightStep): NightStep | undefined {
 // ---- Registry ----
 
 class RoomRegistry {
+  // Keyed by the stable internal `code`. Used for socket-attached lookups so
+  // existing handlers keep working when the public join code rotates.
   private byCode = new Map<string, Room>();
+  // Keyed by the rotating public `joinCode`. Used for player join requests.
+  private byJoinCode = new Map<string, Room>();
   private io: IO | null = null;
 
   attachIO(io: IO) {
@@ -489,9 +524,10 @@ class RoomRegistry {
   create(): Room {
     if (!this.io) throw new Error("RoomRegistry has no io attached");
     let code = newCode();
-    while (this.byCode.has(code)) code = newCode();
+    while (this.byCode.has(code) || this.byJoinCode.has(code)) code = newCode();
     const room = new Room(code, this.io);
     this.byCode.set(code, room);
+    this.byJoinCode.set(code, room);
     return room;
   }
 
@@ -499,8 +535,26 @@ class RoomRegistry {
     return this.byCode.get(code.toUpperCase());
   }
 
+  // Used when a player types a code to join.
+  getByJoinCode(joinCode: string): Room | undefined {
+    return this.byJoinCode.get(joinCode.toUpperCase());
+  }
+
   remove(code: string) {
+    const room = this.byCode.get(code);
     this.byCode.delete(code);
+    if (room) this.byJoinCode.delete(room.joinCode);
+  }
+
+  // Generate a fresh join code (avoiding collisions with any existing room's
+  // internal code OR another room's join code) and apply it. Caller is
+  // responsible for broadcasting the new state.
+  rotateJoinCode(room: Room) {
+    let next = newCode();
+    while (this.byCode.has(next) || this.byJoinCode.has(next)) next = newCode();
+    this.byJoinCode.delete(room.joinCode);
+    room.joinCode = next;
+    this.byJoinCode.set(next, room);
   }
 }
 

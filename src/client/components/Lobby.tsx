@@ -58,6 +58,8 @@ export function Lobby({ room, me }: Props) {
         <ul className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
           {room.players.map((p) => {
             const ready = lobbyReadyIds.includes(p.id);
+            const isMe = me?.myId === p.id;
+            const canKick = isHost && !p.isHost && !isMe;
             return (
               <li
                 key={p.id}
@@ -67,14 +69,29 @@ export function Lobby({ room, me }: Props) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{p.name}</span>
-                  {p.isHost ? (
-                    <span className="text-xs text-amber-300">host</span>
-                  ) : ready ? (
-                    <span className="text-xs text-emerald-300">ready</span>
-                  ) : null}
+                  <div className="flex items-center gap-1.5">
+                    {p.isHost ? (
+                      <span className="text-xs text-amber-300">host</span>
+                    ) : ready ? (
+                      <span className="text-xs text-emerald-300">ready</span>
+                    ) : null}
+                    {canKick && (
+                      <button
+                        className="text-xs text-rose-300 hover:text-rose-200 px-1.5 py-0.5 rounded border border-rose-900 hover:border-rose-700"
+                        onClick={() => {
+                          if (confirm(`Kick ${p.name}? The room code will change.`)) {
+                            send.kick(p.id);
+                          }
+                        }}
+                        title="Kick this player; room code will rotate"
+                      >
+                        Kick
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {!p.connected && <span className="text-xs">offline</span>}
-                {me?.myId === p.id && <span className="text-xs text-indigo-300">you</span>}
+                {isMe && <span className="text-xs text-indigo-300">you</span>}
               </li>
             );
           })}

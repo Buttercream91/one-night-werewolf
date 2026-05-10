@@ -26,6 +26,7 @@ export const send = {
   setRoles: (roles: Role[]) => socket.emit("lobby:setRoles", { roles }),
   setDaySeconds: (seconds: number) => socket.emit("lobby:setDaySeconds", { seconds }),
   lobbyReady: (ready: boolean) => socket.emit("lobby:ready", { ready }),
+  kick: (playerId: string) => socket.emit("lobby:kick", { playerId }),
   start: () => socket.emit("lobby:start"),
   nightAction: (action: Parameters<ClientToServer["night:action"]>[0]) =>
     socket.emit("night:action", action),

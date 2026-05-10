@@ -29,13 +29,13 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     const player = room.addPlayer(name.trim(), socket.id);
     room.setHost(player.id);
     attach(room.code, player.id);
-    socket.emit("joined", { roomCode: room.code, playerId: player.id, name: player.name });
+    socket.emit("joined", { roomCode: room.joinCode, playerId: player.id, name: player.name });
     room.broadcast();
-    cb({ ok: true, code: room.code, playerId: player.id });
+    cb({ ok: true, code: room.joinCode, playerId: player.id });
   });
 
   socket.on("room:join", ({ name, code, resumePlayerId }, cb) => {
-    const room = rooms.get(code);
+    const room = rooms.getByJoinCode(code);
     if (!room) return cb({ ok: false, error: "Room not found" });
     if (!validName(name)) return cb({ ok: false, error: "Name required" });
     let playerId: string;
@@ -59,7 +59,7 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
       }
     }
     attach(room.code, playerId);
-    socket.emit("joined", { roomCode: room.code, playerId, name: name.trim() });
+    socket.emit("joined", { roomCode: room.joinCode, playerId, name: name.trim() });
     room.broadcast();
     cb({ ok: true, playerId });
   });
@@ -130,6 +130,15 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
     room.setLobbyReady(attachedPlayerId, !!ready);
+    room.broadcast();
+  });
+
+  socket.on("lobby:kick", ({ playerId }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof playerId !== "string") return;
+    const result = room.kickPlayer(attachedPlayerId, playerId);
+    if (!result.ok) return socket.emit("error", { message: result.error });
     room.broadcast();
   });
 

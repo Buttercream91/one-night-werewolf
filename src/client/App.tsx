@@ -32,6 +32,14 @@ export function App() {
     function onRoomState(r: PublicRoom) {
       setServerTimeOffset(r.serverNow - Date.now());
       setRoom(r);
+      // The host can rotate the room's join code when kicking. Keep the saved
+      // session in lockstep so a refresh reconnects with the current code.
+      setSession((prev) => {
+        if (!prev || prev.roomCode === r.code) return prev;
+        const next = { ...prev, roomCode: r.code };
+        saveSession(next);
+        return next;
+      });
     }
     function onYouState(v: PrivateView) {
       setMe(v);
@@ -45,6 +53,13 @@ export function App() {
     function onError(payload: { message: string }) {
       setError(payload.message);
     }
+    function onKicked(payload: { reason: string }) {
+      clearSession();
+      setSession(null);
+      setRoom(null);
+      setMe(null);
+      setError(payload.reason);
+    }
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -52,6 +67,7 @@ export function App() {
     socket.on("you:state", onYouState);
     socket.on("joined", onJoined);
     socket.on("error", onError);
+    socket.on("kicked", onKicked);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -59,6 +75,7 @@ export function App() {
       socket.off("you:state", onYouState);
       socket.off("joined", onJoined);
       socket.off("error", onError);
+      socket.off("kicked", onKicked);
     };
   }, []);
 
