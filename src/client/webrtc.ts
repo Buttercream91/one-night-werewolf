@@ -222,12 +222,11 @@ export async function startMic(): Promise<{ ok: true } | { ok: false; error: str
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `Mic access denied: ${msg}` };
   }
-  // Add tracks to any peer connections that already exist.
-  for (const e of peers.values()) {
-    for (const track of localStream.getAudioTracks()) {
-      e.pc.addTrack(track, localStream);
-    }
-  }
+  // Tear down any listen-only peer connections we'd already established —
+  // the next syncPeers (after the server confirms hasMic=true) rebuilds
+  // them with our new tracks added at creation time. Avoids the SDP
+  // renegotiation dance.
+  for (const id of [...peers.keys()]) destroyPeer(id);
   micEnabledState = true;
   // Watch our own mic level so our own tile pulses when we talk.
   if (myPlayerId) startAnalyzer(myPlayerId, localStream);
@@ -244,7 +243,9 @@ export function stopMic(): void {
   }
   micEnabledState = false;
   socket.emit("audio:setReady", { ready: false });
-  // Tear down all peer connections — we'll rebuild when mic comes back.
+  // Tear down peer connections — they were carrying our tracks. The next
+  // syncPeers rebuilds them as listen-only (we still hear the mic-enabled
+  // peers).
   for (const id of [...peers.keys()]) destroyPeer(id);
   notify();
 }
@@ -256,21 +257,20 @@ export function micEnabled(): boolean {
 // Called on every room state. Bring the peer set into line with the
 // current room: connect to mic-ready peers we don't have, drop peers who
 // are gone, and (re)apply the audio mask.
+//
+// Listen-only is supported: we form a peer connection whenever EITHER side
+// has a mic enabled, so a player without their mic still receives audio
+// from mic-enabled peers. With no mic on either side, there's nothing to
+// transmit, so we skip — saves a useless connection.
 export function syncPeers(room: PublicRoom): void {
   if (!myPlayerId) return;
-  if (!micEnabledState || !localStream) {
-    // We don't initiate connections until we have mic. If the room state
-    // changes phase while we're mic-off, just update mask for any existing
-    // (incoming-initiated) connections.
-    applyAudioMask(room);
-    return;
-  }
 
   const wanted = new Set<string>();
   for (const p of room.players) {
     if (p.id === myPlayerId) continue;
     if (!p.connected) continue;
-    if (!p.hasMic) continue;
+    // At least one side must have mic for the connection to carry audio.
+    if (!p.hasMic && !micEnabledState) continue;
     wanted.add(p.id);
   }
 
@@ -388,7 +388,8 @@ export function setPeerMuted(peerId: string, m: boolean) {
 // ---- Signaling event handlers (wired from App on socket connect) ----
 
 export async function handleOffer(from: string, sdp: RTCSessionDescriptionInit) {
-  if (!localStream) return; // Won't accept incoming until mic is ready.
+  // Accept incoming offers even without local mic — listen-only is allowed
+  // and the peer's offer carries the tracks we want to play.
   const e = getOrCreatePeer(from);
   try {
     await e.pc.setRemoteDescription(sdp);

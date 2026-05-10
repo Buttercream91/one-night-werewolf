@@ -92,7 +92,9 @@ export function PlayerMenu({ target, room, myId, where }: Props) {
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[1000] w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
+            // z-[99999] beats anything else in the page; isolate creates a
+            // fresh stacking context so descendant z-indices stay local.
+            className="fixed z-[99999] isolate w-56 rounded-md border border-slate-700 bg-slate-900 shadow-xl text-sm text-slate-100"
             style={{ top: pos.top, left: pos.left }}
           >
             {mode === "colors" ? (
