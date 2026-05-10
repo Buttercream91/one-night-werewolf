@@ -1,4 +1,5 @@
 const KEY = "onuw.session";
+const NARRATOR_KEY = "onuw.narrator";
 
 export interface SessionData {
   roomCode: string;
@@ -27,5 +28,22 @@ export function saveSession(data: SessionData) {
 export function clearSession() {
   try {
     sessionStorage.removeItem(KEY);
+  } catch {}
+}
+
+// Per-player narrator preference. Stored in localStorage so it persists
+// across sessions on the same device. Falls back to DEFAULT_VOICE_PACK
+// in callers if unset.
+export function loadNarrator(): string | null {
+  try {
+    return localStorage.getItem(NARRATOR_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveNarrator(packId: string) {
+  try {
+    localStorage.setItem(NARRATOR_KEY, packId);
   } catch {}
 }

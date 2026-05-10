@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import type { PrivateView, PublicRoom } from "../../shared/types.js";
+import { DEFAULT_VOICE_PACK } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { loadNarrator } from "../storage.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
@@ -17,12 +19,14 @@ export function VotePhase({ room, me }: Props) {
   const cast = room.players.filter((p) => p.votedFor != null).length;
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
 
-  // Play the "begin vote" announcement once when this phase mounts.
+  // Play the "begin vote" announcement once when this phase mounts. Each
+  // player hears their own narrator pick (loaded from localStorage).
   useEffect(() => {
-    const a = new Audio(`/voice/${room.voicePack}/BeginVote.mp3`);
+    const pack = loadNarrator() ?? DEFAULT_VOICE_PACK;
+    const a = new Audio(`/voice/${pack}/BeginVote.mp3`);
     a.play().catch(() => {});
     // Don't pause on unmount — let it finish.
-  }, [room.voicePack]);
+  }, []);
 
   return (
     <div className="space-y-6">

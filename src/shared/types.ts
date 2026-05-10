@@ -23,8 +23,6 @@ export interface PublicPlayer {
   name: string;
   connected: boolean;
   isHost: boolean;
-  // Lobby:
-  voicePackVote?: string;
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
@@ -42,7 +40,6 @@ export interface PublicRoom {
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3
-  voicePack: string; // currently winning vote (or default until game start)
   // IDs of non-host players who pressed Ready in the lobby. Host can't start
   // until everyone else here is checked off.
   lobbyReadyIds?: string[];
@@ -51,7 +48,10 @@ export interface PublicRoom {
   // Night:
   nightStep?: NightStep;
   nightStepEndsAt?: number; // epoch ms — fixed duration regardless of who's acting
-  nightStepVoiceUrl?: string; // public file under /voice/ to play on step start
+  // Filename under /voice/<pack>/ to play at the start of this step (e.g.
+  // "Werewolves.mp3"). Each player resolves their own pack from local
+  // preference so different players hear different narrators.
+  nightStepVoiceFile?: string;
   // Day:
   dayEndsAt?: number; // epoch ms
   daySeconds?: number; // configured length
@@ -196,7 +196,6 @@ export interface ClientToServer {
     payload: { name: string },
     cb: (res: { ok: true; code: string; playerId: string } | { ok: false; error: string }) => void,
   ) => void;
-  "lobby:voteVoicePack": (payload: { packId: string }) => void;
   "note:add": (payload: { text: string }) => void;
   "note:remove": (payload: { index: number }) => void;
   "room:join": (

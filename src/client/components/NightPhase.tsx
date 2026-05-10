@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { NightPrompt, NightStep, PrivateView, PublicRoom, Role } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
+import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
 import { CenterCards, type CenterMode } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
@@ -15,7 +16,10 @@ interface Props {
 export function NightPhase({ room, me }: Props) {
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
   const remaining = useCountdown(room.nightStepEndsAt);
-  const audioBlocked = useStepAudio(room.nightStep, room.nightStepVoiceUrl);
+  const stepUrl = room.nightStepVoiceFile
+    ? `/voice/${loadNarrator() ?? DEFAULT_VOICE_PACK}/${room.nightStepVoiceFile}`
+    : undefined;
+  const audioBlocked = useStepAudio(room.nightStep, stepUrl);
 
   // The Seer has a sub-mode (player vs center). Keep it here so the CenterCards
   // up top knows when the Seer is in center-pick mode.

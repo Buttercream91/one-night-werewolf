@@ -14,14 +14,14 @@ import type {
   ServerToClient,
   WinnerSide,
 } from "../shared/types.js";
-import { DEFAULT_VOICE_PACK, NIGHT_ORDER, ROLE_META, VOICE_PACKS } from "../shared/types.js";
+import { NIGHT_ORDER, ROLE_META } from "../shared/types.js";
 import {
   applyNightAction,
   defaultActionFor,
   isStepInPlay,
   setupNightStep,
   STEP_SECONDS,
-  voiceUrlFor,
+  stepFileFor,
 } from "./night.js";
 import { resolveVotes } from "./vote.js";
 
@@ -35,8 +35,6 @@ export interface ServerPlayer {
   name: string;
   socketId: string;
   connected: boolean;
-  // Lobby:
-  voicePackVote?: string;
   // Game-time data:
   originalRole?: Role;
   doppelgangerCopied?: Role; // role this player copied if originalRole === doppelganger
@@ -62,7 +60,6 @@ export class Room {
   // and the lobby UI also enforces this so the slot can't be removed.
   selectedRoles: Role[] = ["werewolf"];
   daySeconds = 300;
-  voicePack: string = DEFAULT_VOICE_PACK; // resolved (winning vote or default) at game start
 
   // Game-time:
   centerCards: Role[] = [];
@@ -70,7 +67,7 @@ export class Room {
   currentRoles = new Map<string, Role>(); // playerId -> live role
   nightStep?: NightStep;
   nightStepEndsAt?: number;
-  nightStepVoiceUrl?: string;
+  nightStepVoiceFile?: string;
   nightStepTimer?: NodeJS.Timeout;
   nightPendingActors = new Set<string>();
   dayEndsAt?: number;
@@ -158,10 +155,6 @@ export class Room {
       return { ok: false, error: "Minion requires at least one Werewolf in the deck" };
     }
 
-    // Resolve voice pack from votes: most-voted pack wins, ties broken by
-    // lowest index in VOICE_PACKS, default if no votes.
-    this.voicePack = tallyVoicePack(this.players);
-
     const deck = shuffle(this.selectedRoles.slice());
     this.players.forEach((p, i) => {
       p.originalRole = deck[i];
@@ -210,7 +203,7 @@ export class Room {
     this.currentRoles.clear();
     this.nightStep = undefined;
     this.nightStepEndsAt = undefined;
-    this.nightStepVoiceUrl = undefined;
+    this.nightStepVoiceFile = undefined;
     this.nightPendingActors.clear();
     this.dayEndsAt = undefined;
     this.killedIds = [];
@@ -250,7 +243,7 @@ export class Room {
     setupNightStep(this, step);
     const ms = STEP_SECONDS[step] * 1000;
     this.nightStepEndsAt = Date.now() + ms;
-    this.nightStepVoiceUrl = voiceUrlFor(this.voicePack, step);
+    this.nightStepVoiceFile = stepFileFor(step);
     if (this.nightStepTimer) clearTimeout(this.nightStepTimer);
     this.nightStepTimer = setTimeout(() => {
       this.endNightStep();
@@ -284,7 +277,7 @@ export class Room {
     this.nightPendingActors.clear();
     this.nightStep = nextNightStep(step);
     this.nightStepEndsAt = undefined;
-    this.nightStepVoiceUrl = undefined;
+    this.nightStepVoiceFile = undefined;
     // runNightStep() will skip past any further unselected role steps.
     this.runNightStep();
   }
@@ -383,17 +376,15 @@ export class Room {
         name: p.name,
         connected: p.connected,
         isHost: p.id === this.hostId,
-        voicePackVote: this.phase === "lobby" ? p.voicePackVote : undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
         killed: isReveal ? this.killedIds.includes(p.id) : undefined,
       })),
       selectedRoles: this.selectedRoles,
-      voicePack: this.voicePack,
       nightStep: this.nightStep,
       nightStepEndsAt: this.nightStepEndsAt,
-      nightStepVoiceUrl: this.nightStepVoiceUrl,
+      nightStepVoiceFile: this.nightStepVoiceFile,
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
@@ -478,19 +469,6 @@ export class Room {
     if (!p) return;
     p.lobbyReady = ready;
   }
-
-  // Lobby: cast or change a vote for a voice pack. Defaults silently to no-op
-  // if the pack id is unknown.
-  voteVoicePack(playerId: string, packId: string) {
-    if (this.phase !== "lobby") return;
-    if (!VOICE_PACKS.find((v) => v.id === packId)) return;
-    const p = this.players.find((p) => p.id === playerId);
-    if (!p) return;
-    p.voicePackVote = packId;
-    // Update the room's preview pack to whoever's currently leading, so
-    // the lobby UI can show the running winner.
-    this.voicePack = tallyVoicePack(this.players);
-  }
 }
 
 function nextNightStep(step: NightStep): NightStep | undefined {
@@ -542,27 +520,4 @@ function shuffle<T>(arr: T[]): T[] {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
-}
-
-// Pick the winning voice pack from current votes. Ties broken by VOICE_PACKS order.
-// Returns DEFAULT_VOICE_PACK if there are no votes.
-function tallyVoicePack(players: ServerPlayer[]): string {
-  const counts = new Map<string, number>();
-  for (const p of players) {
-    if (p.voicePackVote) counts.set(p.voicePackVote, (counts.get(p.voicePackVote) ?? 0) + 1);
-  }
-  if (counts.size === 0) return DEFAULT_VOICE_PACK;
-  let bestId = DEFAULT_VOICE_PACK;
-  let bestCount = -1;
-  let bestIndex = Infinity;
-  for (const pack of VOICE_PACKS) {
-    const c = counts.get(pack.id) ?? 0;
-    const idx = VOICE_PACKS.indexOf(pack);
-    if (c > bestCount || (c === bestCount && idx < bestIndex)) {
-      bestId = pack.id;
-      bestCount = c;
-      bestIndex = idx;
-    }
-  }
-  return bestId;
 }

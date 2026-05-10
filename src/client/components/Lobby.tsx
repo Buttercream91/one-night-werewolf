@@ -1,7 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
-import { ALL_ROLES, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
+import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { loadNarrator, saveNarrator } from "../storage.js";
 import { CopyableCode } from "./CopyableCode.js";
 import { ROLE_IMAGE } from "./RoleCard.js";
 
@@ -80,7 +81,7 @@ export function Lobby({ room, me }: Props) {
         </ul>
       </div>
 
-      <VoicePackPicker room={room} me={me} />
+      <NarratorPicker />
 
       <div className="panel">
         <div className="flex items-center justify-between gap-3">
@@ -225,13 +226,8 @@ export function Lobby({ room, me }: Props) {
   );
 }
 
-function VoicePackPicker({ room, me }: { room: PublicRoom; me: PrivateView | null }) {
-  // Tally votes per pack so the lobby shows the running winner.
-  const counts: Record<string, number> = {};
-  for (const p of room.players) {
-    if (p.voicePackVote) counts[p.voicePackVote] = (counts[p.voicePackVote] ?? 0) + 1;
-  }
-  const myVote = me ? room.players.find((p) => p.id === me.myId)?.voicePackVote : undefined;
+function NarratorPicker() {
+  const [pick, setPick] = useState<string>(() => loadNarrator() ?? DEFAULT_VOICE_PACK);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   if (audioRef.current === null && typeof Audio !== "undefined") {
@@ -241,41 +237,34 @@ function VoicePackPicker({ room, me }: { room: PublicRoom; me: PrivateView | nul
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.src = `/voice/${packId}/Intro.mp3`;
-    audioRef.current.play().catch(() => {
-      // Autoplay/missing-file: silent fallback.
-    });
+    audioRef.current.play().catch(() => {});
+  }
+  function choose(packId: string) {
+    setPick(packId);
+    saveNarrator(packId);
   }
 
   return (
     <div className="panel">
-      <h2 className="heading text-xl text-indigo-200">Narrator voice</h2>
+      <h2 className="heading text-xl text-indigo-200">Your narrator</h2>
       <p className="text-sm text-slate-400 mt-1">
-        Each player picks a voice. Most votes wins (currently leading:{" "}
-        <span className="text-slate-200">
-          {VOICE_PACKS.find((v) => v.id === room.voicePack)?.label ?? room.voicePack}
-        </span>
-        ).
+        Pick the voice you want to hear during the night. Saved on this device — every player
+        picks their own.
       </p>
       <ul className="mt-4 grid sm:grid-cols-2 gap-2">
         {VOICE_PACKS.map((pack) => {
-          const tally = counts[pack.id] ?? 0;
-          const mine = myVote === pack.id;
+          const mine = pick === pack.id;
           return (
             <li
               key={pack.id}
               className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
-                mine
-                  ? "border-indigo-500 bg-indigo-950/40"
-                  : "border-slate-700 bg-slate-900/40"
+                mine ? "border-indigo-500 bg-indigo-950/40" : "border-slate-700 bg-slate-900/40"
               }`}
             >
               <div className="min-w-0">
                 <div className="font-medium text-slate-100">
                   {pack.label}{" "}
                   <span className="text-xs text-slate-400">— {pack.blurb}</span>
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  {tally} {tally === 1 ? "vote" : "votes"}
                 </div>
               </div>
               <div className="flex gap-1.5 shrink-0">
@@ -288,9 +277,9 @@ function VoicePackPicker({ room, me }: { room: PublicRoom; me: PrivateView | nul
                 </button>
                 <button
                   className={mine ? "btn-primary text-xs px-2 py-1" : "btn-ghost text-xs px-2 py-1"}
-                  onClick={() => send.voteVoicePack(pack.id)}
+                  onClick={() => choose(pack.id)}
                 >
-                  {mine ? "Voted" : "Vote"}
+                  {mine ? "Picked" : "Pick"}
                 </button>
               </div>
             </li>

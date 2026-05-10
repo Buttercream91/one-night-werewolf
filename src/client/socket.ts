@@ -25,7 +25,6 @@ export function joinRoom(
 export const send = {
   setRoles: (roles: Role[]) => socket.emit("lobby:setRoles", { roles }),
   setDaySeconds: (seconds: number) => socket.emit("lobby:setDaySeconds", { seconds }),
-  voteVoicePack: (packId: string) => socket.emit("lobby:voteVoicePack", { packId }),
   lobbyReady: (ready: boolean) => socket.emit("lobby:ready", { ready }),
   start: () => socket.emit("lobby:start"),
   nightAction: (action: Parameters<ClientToServer["night:action"]>[0]) =>

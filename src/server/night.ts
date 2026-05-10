@@ -3,10 +3,11 @@ import type { Room, ServerPlayer } from "./rooms.js";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-// Per-step audio file (under client public/voice/<pack>/). Played at the start
-// of the step on every player's device. SAME for everyone whether or not the
-// role is filled, so unfilled roles can't be detected.
-// Resolved per room based on selected voice pack via voiceUrl() below.
+// Per-step audio filename (lives under public/voice/<pack>/ for every pack).
+// Played at the start of the step on every player's device. SAME for everyone
+// whether or not the role is filled, so unfilled roles can't be detected by
+// timing. Each client picks its own pack from local preference and joins
+// /voice/<pack>/ + this filename to get the URL it plays.
 const STEP_FILE: Record<NightStep, string | null> = {
   intro: "Intro.mp3",
   doppelganger: "Doppelganger.mp3",
@@ -21,10 +22,8 @@ const STEP_FILE: Record<NightStep, string | null> = {
   outro: "Outro.mp3",
 };
 
-export function voiceUrlFor(pack: string, step: NightStep): string | undefined {
-  const file = STEP_FILE[step];
-  if (!file) return undefined;
-  return `/voice/${pack}/${file}`;
+export function stepFileFor(step: NightStep): string | undefined {
+  return STEP_FILE[step] ?? undefined;
 }
 
 // Should this step play during the night? Intro/outro always do. A role-specific

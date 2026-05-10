@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import type { PrivateView, PublicRoom, Role, WinnerSide } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
+import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { loadNarrator } from "../storage.js";
 import { GameLog } from "./GameLog.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -17,13 +18,15 @@ export function RevealPhase({ room, me }: Props) {
   const iWon = !!myFinal && playerWon(myFinal, winners);
   const isHost = !!room.players.find((p) => p.id === me.myId)?.isHost;
 
-  // Play the winner-declaration audio once when this phase mounts.
+  // Play the winner-declaration audio once when this phase mounts. Uses the
+  // viewer's own narrator preference.
   useEffect(() => {
     const file = pickWinnerFile(winners);
     if (!file) return;
-    const a = new Audio(`/voice/${room.voicePack}/${file}.mp3`);
+    const pack = loadNarrator() ?? DEFAULT_VOICE_PACK;
+    const a = new Audio(`/voice/${pack}/${file}.mp3`);
     a.play().catch(() => {});
-  }, [room.voicePack]);
+  }, []);
 
   function nameOf(id: string) {
     return room.players.find((p) => p.id === id)?.name ?? "?";

@@ -117,14 +117,6 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
-  socket.on("lobby:voteVoicePack", ({ packId }) => {
-    const room = currentRoom();
-    if (!room || !attachedPlayerId) return;
-    if (room.phase !== "lobby") return;
-    room.voteVoicePack(attachedPlayerId, packId);
-    room.broadcast();
-  });
-
   socket.on("lobby:setDaySeconds", ({ seconds }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
