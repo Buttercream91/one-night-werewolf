@@ -27,6 +27,9 @@ export interface PublicPlayer {
   // play (deck size is fixed at deal time), but they no longer act, vote, or
   // hold up phase advancement. Resets at game start / reset to lobby.
   spectating?: boolean;
+  // Host force-set this player to spectator. The player can't return to
+  // active on their own — only the host can release them. Implies spectating.
+  forcedSpectating?: boolean;
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
@@ -264,6 +267,11 @@ export interface ClientToServer {
   "lobby:setDaySeconds": (payload: { seconds: number }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
+  // Host force-spectates a player (spectating=true) or releases them
+  // (spectating=false, lifting the lock).
+  "lobby:forceSpectate": (payload: { playerId: string; spectating: boolean }) => void;
+  // Host hands the host role to another player. Old host becomes regular.
+  "lobby:promoteHost": (payload: { playerId: string }) => void;
   "lobby:start": () => void;
   "room:pause": (payload: { paused: boolean }) => void;
   "night:action": (payload: NightAction) => void;

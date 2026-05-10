@@ -150,6 +150,24 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:forceSpectate", ({ playerId, spectating }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof playerId !== "string") return;
+    const result = room.forceSpectate(attachedPlayerId, playerId, !!spectating);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:promoteHost", ({ playerId }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof playerId !== "string") return;
+    const result = room.transferHost(attachedPlayerId, playerId);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("lobby:start", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

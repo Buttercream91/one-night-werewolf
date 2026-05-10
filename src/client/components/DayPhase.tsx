@@ -7,6 +7,7 @@ import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
+import { PlayerMenu } from "./PlayerMenu.js";
 import { RoleCard } from "./RoleCard.js";
 
 interface Props {
@@ -65,9 +66,12 @@ export function DayPhase({ room, me }: Props) {
                       p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1">
                       <span className={`font-medium ${nameCls}`}>{p.name}</span>
-                      {ready && <span className="text-xs text-emerald-300">ready</span>}
+                      <div className="flex items-center gap-1">
+                        {ready && <span className="text-xs text-emerald-300">ready</span>}
+                        <PlayerMenu target={p} room={room} myId={me.myId} where="game" />
+                      </div>
                     </div>
                     {accusationsAgainst.length > 0 && (
                       <ul className="mt-1.5 space-y-0.5">

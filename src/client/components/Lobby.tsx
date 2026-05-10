@@ -4,6 +4,7 @@ import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../sha
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
 import { CopyableCode } from "./CopyableCode.js";
+import { PlayerMenu } from "./PlayerMenu.js";
 import { ROLE_IMAGE } from "./RoleCard.js";
 
 interface Props {
@@ -79,7 +80,6 @@ export function Lobby({ room, me }: Props) {
             {activePlayers.map((p) => {
               const ready = lobbyReadyIds.includes(p.id);
               const isMe = me?.myId === p.id;
-              const canKick = isHost && !p.isHost && !isMe;
               return (
                 <li
                   key={p.id}
@@ -88,43 +88,22 @@ export function Lobby({ room, me }: Props) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{p.name}</span>
-                    <div className="flex items-center gap-1.5">
+                    <span className="font-medium">
+                      {p.name}
+                      {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
+                    </span>
+                    <div className="flex items-center gap-1">
                       {p.isHost ? (
                         <span className="text-xs text-amber-300">host</span>
                       ) : ready ? (
                         <span className="text-xs text-emerald-300">ready</span>
                       ) : null}
-                      {canKick && (
-                        <button
-                          className="text-xs text-rose-300 hover:text-rose-200 px-1.5 py-0.5 rounded border border-rose-900 hover:border-rose-700"
-                          onClick={() => {
-                            if (confirm(`Kick ${p.name}? The room code will change.`)) {
-                              send.kick(p.id);
-                            }
-                          }}
-                          title="Kick this player; room code will rotate"
-                        >
-                          Kick
-                        </button>
+                      {me && (
+                        <PlayerMenu target={p} room={room} myId={me.myId} where="lobby" />
                       )}
                     </div>
                   </div>
                   {!p.connected && <span className="text-xs">offline</span>}
-                  {isMe && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-indigo-300">you</span>
-                      {!p.isHost && (
-                        <button
-                          className="text-xs text-slate-400 hover:text-slate-200 underline"
-                          onClick={() => send.spectate(true)}
-                          title="Switch to spectator"
-                        >
-                          spectate
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </li>
               );
             })}
@@ -152,8 +131,18 @@ export function Lobby({ room, me }: Props) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-300">{p.name}</span>
-                    {isMe && <span className="text-xs text-indigo-300">you</span>}
+                    <span className="font-medium text-slate-300">
+                      {p.name}
+                      {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
+                      {p.forcedSpectating && (
+                        <span className="ml-1 text-xs text-amber-400" title="Set to spectator by the host">
+                          🔒
+                        </span>
+                      )}
+                    </span>
+                    {me && (
+                      <PlayerMenu target={p} room={room} myId={me.myId} where="lobby" />
+                    )}
                   </div>
                   {!p.connected && <span className="text-xs">offline</span>}
                 </li>

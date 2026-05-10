@@ -48,6 +48,7 @@ export interface ServerPlayer {
   ready?: boolean; // Day phase "ready to vote"
   lobbyReady?: boolean; // Lobby "ready for host to start"
   spectating?: boolean; // Player tapped "Back to lobby" during the round.
+  forcedSpectating?: boolean; // Host moved them to spectator; only host releases.
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -447,6 +448,7 @@ export class Room {
         connected: p.connected,
         isHost: p.id === this.hostId,
         spectating: p.spectating || undefined,
+        forcedSpectating: p.forcedSpectating || undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
@@ -631,6 +633,12 @@ export class Room {
 
     if (!spectating) {
       // Becoming a player.
+      if (p.forcedSpectating) {
+        return {
+          ok: false,
+          error: "Host moved you to spectator. Only the host can release you.",
+        };
+      }
       if (this.phase !== "lobby") {
         return { ok: false, error: "Can only join the active player list in the lobby" };
       }
@@ -680,6 +688,49 @@ export class Room {
     }
     // Clear any accusations they made — spectators shouldn't keep asserting things.
     this.accusations = this.accusations.filter((a) => a.accuserId !== playerId);
+    return { ok: true };
+  }
+
+  // Host force-spectates a player or releases them from forced-spectator.
+  // When forcing, the player is immediately moved to spectator with the
+  // lock flag set; they can't toggle back without host action. Releasing
+  // (spectating=false) clears the lock — the player stays a spectator but
+  // is now free to opt back into the active list themselves.
+  forceSpectate(hostId: string, targetId: string, spectating: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (hostId === targetId) {
+      return { ok: false, error: "Use the regular Spectate button on yourself" };
+    }
+    const target = this.players.find((p) => p.id === targetId);
+    if (!target) return { ok: false, error: "Player not in this room" };
+    if (spectating) {
+      target.forcedSpectating = true;
+      // Reuse the regular spectator transition for all the auto-action /
+      // ready / vote / accusation cleanup.
+      const wasSpectating = target.spectating;
+      if (!wasSpectating) {
+        const result = this.setSpectator(targetId, true);
+        if (!result.ok) {
+          target.forcedSpectating = false;
+          return result;
+        }
+      }
+    } else {
+      target.forcedSpectating = false;
+    }
+    return { ok: true };
+  }
+
+  // Hand the host role to another player in the room. Old host becomes a
+  // regular player. Allowed at any time; useful if the current host needs
+  // to step out (e.g. spectate) but wants to keep the round going.
+  transferHost(currentHostId: string, targetId: string): ActionResult {
+    if (this.hostId !== currentHostId) return { ok: false, error: "Only the host can do that" };
+    if (currentHostId === targetId) return { ok: true };
+    const target = this.players.find((p) => p.id === targetId);
+    if (!target) return { ok: false, error: "Player not in this room" };
+    if (!target.connected) return { ok: false, error: "Can't hand off to a disconnected player" };
+    this.hostId = targetId;
     return { ok: true };
   }
 
