@@ -5,8 +5,17 @@ import { Game } from "./components/Game.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
 import { joinRoom, send, socket } from "./socket.js";
+import {
+  setMusicMuted,
+  setMusicVolume,
+  startMusic,
+  stopMusic,
+  useMusicControls,
+} from "./music.js";
 import { setServerTimeOffset } from "./useCountdown.js";
 import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
+
+const NIGHT_MUSIC_URL = "/audio/night-music.mp3";
 
 export function App() {
   const [session, setSession] = useState<SessionData | null>(() => loadSession());
@@ -101,12 +110,23 @@ export function App() {
     };
   }, [connected, session?.roomCode, session?.playerId, session?.name]);
 
+  // Music plays during the night phase only. Stops in lobby/day/vote/reveal,
+  // and on disconnect/leave. Pausing the round also pauses the music — the
+  // server clears nightStepEndsAt while paused but room.phase stays "night",
+  // so we additionally check `paused` to keep the soundtrack honest.
+  useEffect(() => {
+    const playing = !!room && room.phase === "night" && !room.paused;
+    if (playing) startMusic(NIGHT_MUSIC_URL);
+    else stopMusic();
+  }, [room?.phase, room?.paused]);
+
   function leaveRoom() {
     socket.emit("room:leave");
     clearSession();
     setSession(null);
     setRoom(null);
     setMe(null);
+    stopMusic();
   }
 
   // Routing: if no session yet, show home. Otherwise show lobby/game based on phase.
@@ -126,6 +146,7 @@ export function App() {
               <span className="text-slate-400">
                 Room <CopyableCode code={room.code} className="text-slate-100" />
               </span>
+              <MusicControls />
               {room.paused && (
                 <span className="text-xs uppercase tracking-wider px-2 py-1 rounded border border-amber-700 bg-amber-950/50 text-amber-300">
                   Paused
@@ -158,6 +179,32 @@ export function App() {
       {session && !room && <div className="mx-auto max-w-md panel text-center">Joining room…</div>}
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
       {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
+    </div>
+  );
+}
+
+function MusicControls() {
+  const { volume, muted } = useMusicControls();
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        className="text-xs px-1.5 py-0.5 rounded text-slate-300 hover:text-slate-100"
+        onClick={() => setMusicMuted(!muted)}
+        title={muted ? "Unmute music" : "Mute music"}
+      >
+        {muted ? "🔇" : volume === 0 ? "🔈" : volume < 0.5 ? "🔉" : "🔊"}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={muted ? 0 : volume}
+        disabled={muted}
+        onChange={(e) => setMusicVolume(Number(e.target.value))}
+        className="w-16 accent-indigo-400"
+        title="Music volume"
+      />
     </div>
   );
 }

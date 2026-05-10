@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { NightPrompt, NightStep, PrivateView, PublicRoom, Role } from "../../shared/types.js";
 import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
+import { duckMusic, unduckMusic } from "../music.js";
 import { send } from "../socket.js";
 import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
@@ -357,6 +358,12 @@ function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolea
 
 let audioUnlocked = false;
 const audioElement: HTMLAudioElement | null = typeof Audio === "undefined" ? null : new Audio();
+if (audioElement) {
+  // Restore music volume whenever the narrator clip ends or is interrupted.
+  // We duck before .play(), so this is what brings it back.
+  audioElement.addEventListener("ended", () => unduckMusic());
+  audioElement.addEventListener("pause", () => unduckMusic());
+}
 function unlockAudio() {
   if (!audioElement) return;
   audioElement.muted = true;
@@ -385,12 +392,14 @@ function useStepAudio(step: NightStep | undefined, url: string | undefined): boo
     lastStep.current = step;
     if (!url || !audioElement) return;
     audioElement.src = url;
+    duckMusic();
     const p = audioElement.play();
     if (p) {
       p.then(() => {
         audioUnlocked = true;
         setBlocked(false);
       }).catch(() => {
+        unduckMusic();
         if (!audioUnlocked) setBlocked(true);
       });
     }
