@@ -211,20 +211,32 @@ export function Lobby({ room, me }: Props) {
         </label>
         <div className="flex-1 flex items-center justify-end gap-3">
           {isHost && (
-            <span className="text-sm">
-              <span className="text-slate-400">Cards selected </span>
-              <span
-                className={`font-mono tabular-nums ${
-                  room.selectedRoles.length === targetCount
-                    ? "text-emerald-300"
-                    : room.selectedRoles.length > targetCount
-                      ? "text-rose-300"
-                      : "text-slate-400"
-                }`}
-              >
-                {room.selectedRoles.length}/{targetCount}
+            <>
+              <span className="text-sm">
+                <span className="text-slate-400">Cards </span>
+                <span
+                  className={`font-mono tabular-nums ${
+                    room.selectedRoles.length === targetCount
+                      ? "text-emerald-300"
+                      : room.selectedRoles.length > targetCount
+                        ? "text-rose-300"
+                        : "text-slate-400"
+                  }`}
+                >
+                  {room.selectedRoles.length}/{targetCount}
+                </span>
               </span>
-            </span>
+              <span className="text-sm">
+                <span className="text-slate-400">Ready </span>
+                <span
+                  className={`font-mono tabular-nums ${
+                    everyoneReady ? "text-emerald-300" : "text-amber-300"
+                  }`}
+                >
+                  {lobbyReadyIds.length}/{room.players.filter((p) => !p.isHost).length}
+                </span>
+              </span>
+            </>
           )}
           {isHost ? (
             <button

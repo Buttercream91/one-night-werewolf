@@ -80,8 +80,10 @@ export class Room {
   nightPendingActors = new Set<string>();
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
-  // accuserId -> accusation. At most one active per accuser.
-  accusations = new Map<string, Accusation>();
+  // Active accusations. An accuser may hold accusations against multiple
+  // distinct targets, so this is a flat array. (accuserId, targetId) pairs
+  // are unique — re-accusing the same target replaces the existing entry.
+  accusations: Accusation[] = [];
   // Paused state. While paused, both phase timers are cleared and the
   // remaining ms (captured at pause time) is held here so resume can recreate
   // them. Player actions (vote, ready, accuse, night) are rejected.
@@ -195,7 +197,7 @@ export class Room {
     this.killedIds = [];
     this.winners = undefined;
     this.actionLog = [];
-    this.accusations.clear();
+    this.accusations = [];
 
     this.phase = "night";
     this.nightStep = NIGHT_ORDER[0];
@@ -229,7 +231,7 @@ export class Room {
     this.killedIds = [];
     this.winners = undefined;
     this.actionLog = [];
-    this.accusations.clear();
+    this.accusations = [];
     if (this.dayTimer) {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;
@@ -343,19 +345,22 @@ export class Room {
     );
   }
 
-  setAccusation(accuserId: string, targetId: string | null, role: Role | null): ActionResult {
+  setAccusation(accuserId: string, targetId: string, role: Role | null): ActionResult {
     if (this.phase !== "day") return { ok: false, error: "Only during the day" };
     if (this.paused) return { ok: false, error: "Game is paused" };
     if (!this.hasPlayer(accuserId)) return { ok: false, error: "Unknown player" };
-    if (targetId == null || role == null) {
-      this.accusations.delete(accuserId);
-      return { ok: true };
-    }
     if (!this.hasPlayer(targetId)) return { ok: false, error: "Unknown target" };
-    if (!this.selectedRoles.includes(role)) {
-      return { ok: false, error: "Role isn't in this round's deck" };
+    // Drop any existing entry for this (accuser, target) pair — re-accusing
+    // replaces, role=null clears.
+    this.accusations = this.accusations.filter(
+      (a) => !(a.accuserId === accuserId && a.targetId === targetId),
+    );
+    if (role !== null) {
+      if (!this.selectedRoles.includes(role)) {
+        return { ok: false, error: "Role isn't in this round's deck" };
+      }
+      this.accusations.push({ accuserId, targetId, role });
     }
-    this.accusations.set(accuserId, { accuserId, targetId, role });
     return { ok: true };
   }
 
@@ -435,7 +440,7 @@ export class Room {
       paused: this.paused || undefined,
       accusations:
         this.phase === "day" || this.phase === "vote" || this.phase === "reveal"
-          ? Array.from(this.accusations.values())
+          ? this.accusations
           : undefined,
       lobbyReadyIds:
         this.phase === "lobby"
@@ -612,8 +617,8 @@ export class Room {
         this.resolveAndReveal();
       }
     }
-    // Clear any accusation they made — spectators shouldn't keep asserting things.
-    this.accusations.delete(playerId);
+    // Clear any accusations they made — spectators shouldn't keep asserting things.
+    this.accusations = this.accusations.filter((a) => a.accuserId !== playerId);
     return { ok: true };
   }
 

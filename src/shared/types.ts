@@ -93,9 +93,26 @@ export type ActionLogEntry =
   | { kind: "seer_saw_player"; actorId: string; targetId: string; role: Role }
   | { kind: "seer_saw_center"; actorId: string; cards: Array<{ index: 0 | 1 | 2; role: Role }> }
   | { kind: "seer_skipped"; actorId: string }
-  | { kind: "robber_swapped"; actorId: string; targetId: string; newRole: Role }
+  // newRole = role the actor now holds (target's old role).
+  // targetNewRole = role the target now holds (always the actor's old role,
+  // which is just "robber" unless a Doppelganger-as-Robber acted).
+  | {
+      kind: "robber_swapped";
+      actorId: string;
+      targetId: string;
+      newRole: Role;
+      targetNewRole: Role;
+    }
   | { kind: "robber_skipped"; actorId: string }
-  | { kind: "troublemaker_swapped"; actorId: string; targetIds: [string, string] }
+  // newRoles is the post-swap pair, aligned with targetIds (newRoles[i] is
+  // the role targetIds[i] now holds). The Troublemaker doesn't see these
+  // during the night — they're surfaced in the reveal log for the table.
+  | {
+      kind: "troublemaker_swapped";
+      actorId: string;
+      targetIds: [string, string];
+      newRoles: [Role, Role];
+    }
   | { kind: "troublemaker_skipped"; actorId: string }
   | { kind: "drunk_swapped"; actorId: string; centerIndex: 0 | 1 | 2 }
   | { kind: "insomniac_saw"; actorId: string; role: Role }
@@ -231,8 +248,10 @@ export interface ClientToServer {
   "room:pause": (payload: { paused: boolean }) => void;
   "night:action": (payload: NightAction) => void;
   "day:ready": (payload: { ready: boolean }) => void;
-  // targetId/role null clears this player's accusation.
-  "day:accuse": (payload: { targetId: string | null; role: Role | null }) => void;
+  // role null clears this player's accusation against the given target. A
+  // single accuser may hold accusations against multiple distinct targets;
+  // re-accusing the same target with a new role replaces it.
+  "day:accuse": (payload: { targetId: string; role: Role | null }) => void;
   "vote:cast": (payload: { targetId: string | "no_kill" }) => void;
   "room:reset": () => void;
 }

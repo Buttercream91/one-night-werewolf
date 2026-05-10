@@ -177,7 +177,7 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
   socket.on("day:accuse", ({ targetId, role }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
-    if (targetId !== null && typeof targetId !== "string") return;
+    if (typeof targetId !== "string") return;
     if (role !== null && !isRole(role)) return;
     const result = room.setAccusation(attachedPlayerId, targetId, role);
     if (!result.ok) return socket.emit("error", { message: result.error });

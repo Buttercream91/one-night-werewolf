@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
 import { ROLE_META } from "../../shared/types.js";
+import { playerColor } from "../playerColor.js";
 import { send } from "../socket.js";
 import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
@@ -50,26 +51,27 @@ export function DayPhase({ room, me }: Props) {
               {room.players.map((p) => {
                 const ready = (room.readyPlayerIds ?? []).includes(p.id);
                 const accusationsAgainst = accusations.filter((a) => a.targetId === p.id);
-                const myAccusation = accusations.find((a) => a.accuserId === me.myId);
-                const myAccusationIsOnP = myAccusation?.targetId === p.id;
+                const myAccusationOnP = accusationsAgainst.find((a) => a.accuserId === me.myId);
                 const isOpen = pickingFor === p.id;
+                const nameCls = playerColor(p.id, room.players);
                 return (
                   <li
                     key={p.id}
                     className={`rounded-md border px-3 py-3 text-sm ${
-                      p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900 text-slate-500"
+                      p.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900"
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{p.name}</span>
+                      <span className={`font-medium ${nameCls}`}>{p.name}</span>
                       {ready && <span className="text-xs text-emerald-300">ready</span>}
                     </div>
                     {accusationsAgainst.length > 0 && (
                       <ul className="mt-1.5 space-y-0.5">
                         {accusationsAgainst.map((a) => {
                           const accuser = room.players.find((x) => x.id === a.accuserId);
+                          const accuserCls = playerColor(a.accuserId, room.players);
                           return (
-                            <li key={a.accuserId} className="text-xs text-amber-200">
+                            <li key={a.accuserId} className={`text-xs ${accuserCls}`}>
                               {accuser?.name ?? "?"} accuses {p.name} of being{" "}
                               <span className="font-medium">{ROLE_META[a.role].label}</span>
                             </li>
@@ -93,12 +95,13 @@ export function DayPhase({ room, me }: Props) {
                             className="text-xs text-indigo-300 hover:text-indigo-200 underline"
                             onClick={() => setPickingFor(p.id)}
                           >
-                            {myAccusationIsOnP ? "Change accusation" : "Accuse"}
+                            {myAccusationOnP ? "Change" : "Accuse"}
                           </button>
-                          {myAccusationIsOnP && (
+                          {myAccusationOnP && (
                             <button
                               className="text-xs text-slate-400 hover:text-slate-300"
-                              onClick={() => send.accuse(null, null)}
+                              onClick={() => send.accuse(p.id, null)}
+                              title="Clear my accusation against this player"
                             >
                               clear
                             </button>

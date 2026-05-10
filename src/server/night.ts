@@ -337,6 +337,9 @@ export function applyNightAction(
       }
       const target = room.players.find((p) => p.id === action.targetId);
       if (!target || target.id === player.id) return { ok: false, error: "Invalid target" };
+      // Capture the actor's current role before the swap — that's what the
+      // target ends up holding after.
+      const actorOldRole = room.currentRoleOf(player.id);
       room.swapPlayerRoles(player.id, target.id);
       const newRole = room.currentRoleOf(player.id);
       player.knownCurrentRole = newRole;
@@ -346,6 +349,7 @@ export function applyNightAction(
         actorId: player.id,
         targetId: target.id,
         newRole,
+        targetNewRole: actorOldRole,
       });
       return { ok: true };
     }
@@ -365,11 +369,15 @@ export function applyNightAction(
       const a = room.players.find((p) => p.id === aId);
       const b = room.players.find((p) => p.id === bId);
       if (!a || !b) return { ok: false, error: "Unknown player" };
+      // After the swap, a holds b's old role and vice versa.
+      const aOld = room.currentRoleOf(a.id);
+      const bOld = room.currentRoleOf(b.id);
       room.swapPlayerRoles(a.id, b.id);
       room.actionLog.push({
         kind: "troublemaker_swapped",
         actorId: player.id,
         targetIds: [aId, bId],
+        newRoles: [bOld, aOld],
       });
       return { ok: true };
     }

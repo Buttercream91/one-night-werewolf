@@ -31,7 +31,7 @@ export const send = {
   nightAction: (action: Parameters<ClientToServer["night:action"]>[0]) =>
     socket.emit("night:action", action),
   dayReady: (ready: boolean) => socket.emit("day:ready", { ready }),
-  accuse: (targetId: string | null, role: Role | null) =>
+  accuse: (targetId: string, role: Role | null) =>
     socket.emit("day:accuse", { targetId, role }),
   vote: (targetId: string | "no_kill") => socket.emit("vote:cast", { targetId }),
   reset: () => socket.emit("room:reset"),

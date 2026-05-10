@@ -1,5 +1,6 @@
 import type { ActionLogEntry, PublicRoom } from "../../shared/types.js";
 import { ROLE_META } from "../../shared/types.js";
+import { playerColor } from "../playerColor.js";
 
 interface Props {
   room: PublicRoom;
@@ -8,26 +9,60 @@ interface Props {
 // Chronological narrative of the night and vote, shown only at reveal.
 export function GameLog({ room }: Props) {
   const log = room.actionLog ?? [];
-  const nameOf = (id: string) => room.players.find((p) => p.id === id)?.name ?? "?";
 
   if (log.length === 0) return null;
 
   return (
     <div className="panel">
       <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">Game log</h3>
-      <ol className="space-y-1.5 text-sm text-slate-200">
-        {log.map((entry, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <span className="mt-1.5 inline-block h-1 w-1 rounded-full bg-slate-500 shrink-0" />
-            <span>{describeEntry(entry, nameOf)}</span>
-          </li>
-        ))}
+      <ol className="space-y-1.5 text-sm">
+        {log.map((entry, i) => {
+          const actorId = actorIdOf(entry);
+          const colorCls = actorId ? playerColor(actorId, room.players) : "text-slate-200";
+          return (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-1.5 inline-block h-1 w-1 rounded-full bg-slate-500 shrink-0" />
+              <span className={colorCls}>{describeEntry(entry, room)}</span>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
 }
 
-function describeEntry(e: ActionLogEntry, nameOf: (id: string) => string): string {
+// The "actor" of a log entry — the player whose action the line describes.
+// Used to color the line with that player's display color. Returns undefined
+// for entries with no single actor (e.g. werewolves_revealed, killed).
+function actorIdOf(e: ActionLogEntry): string | undefined {
+  switch (e.kind) {
+    case "doppelganger_copied":
+    case "lone_wolf_peeked":
+    case "lone_wolf_skipped":
+    case "minion_saw_werewolves":
+    case "lone_mason":
+    case "seer_saw_player":
+    case "seer_saw_center":
+    case "seer_skipped":
+    case "robber_swapped":
+    case "robber_skipped":
+    case "troublemaker_swapped":
+    case "troublemaker_skipped":
+    case "drunk_swapped":
+    case "insomniac_saw":
+      return e.actorId;
+    case "vote":
+      return e.voterId;
+    case "werewolves_revealed":
+    case "masons_revealed":
+    case "killed":
+    case "no_one_died":
+      return undefined;
+  }
+}
+
+function describeEntry(e: ActionLogEntry, room: PublicRoom): string {
+  const nameOf = (id: string) => room.players.find((p) => p.id === id)?.name ?? "?";
   switch (e.kind) {
     case "doppelganger_copied":
       return `${nameOf(e.actorId)} (Doppelganger) copied ${nameOf(e.targetId)} and became ${ROLE_META[e.copiedRole].label}.`;
@@ -52,11 +87,11 @@ function describeEntry(e: ActionLogEntry, nameOf: (id: string) => string): strin
     case "seer_skipped":
       return `${nameOf(e.actorId)} (Seer) chose not to look.`;
     case "robber_swapped":
-      return `${nameOf(e.actorId)} (Robber) stole ${nameOf(e.targetId)}'s card and became ${ROLE_META[e.newRole].label}.`;
+      return `${nameOf(e.actorId)} (Robber) stole ${nameOf(e.targetId)}'s card and became ${ROLE_META[e.newRole].label}. ${nameOf(e.targetId)} is now the ${ROLE_META[e.targetNewRole].label}.`;
     case "robber_skipped":
       return `${nameOf(e.actorId)} (Robber) chose not to steal.`;
     case "troublemaker_swapped":
-      return `${nameOf(e.actorId)} (Troublemaker) swapped the cards of ${nameOf(e.targetIds[0])} and ${nameOf(e.targetIds[1])}.`;
+      return `${nameOf(e.actorId)} (Troublemaker) swapped the cards of ${nameOf(e.targetIds[0])} and ${nameOf(e.targetIds[1])}. ${nameOf(e.targetIds[0])} is now the ${ROLE_META[e.newRoles[0]].label} and ${nameOf(e.targetIds[1])} is now the ${ROLE_META[e.newRoles[1]].label}.`;
     case "troublemaker_skipped":
       return `${nameOf(e.actorId)} (Troublemaker) didn't swap anyone.`;
     case "drunk_swapped":
