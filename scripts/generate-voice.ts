@@ -56,6 +56,9 @@ const CLIPS: Record<string, string> = {
   VillagersWin: "The Villagers win!",
   TannerWins: "The Tanner wins!",
 
+  // Host-fired announcements.
+  ReadyCheck: "This is a readiness check! The game will begin shortly. Select the Ready button to begin.",
+
   // Narrated tutorial. One clip per step. Step IDs match Tutorial.tsx.
   Tutorial_Welcome:
     "Welcome to One Night Ultimate Werewolf. Each round, every player gets one role and the village has one night to find the wolves. This tour walks through the rules and the controls.",

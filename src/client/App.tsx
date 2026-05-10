@@ -14,7 +14,8 @@ import {
   useMusicControls,
 } from "./music.js";
 import { setServerTimeOffset } from "./useCountdown.js";
-import { clearSession, loadSession, saveSession, type SessionData } from "./storage.js";
+import { clearSession, loadNarrator, loadSession, saveSession, type SessionData } from "./storage.js";
+import { DEFAULT_VOICE_PACK } from "../shared/types.js";
 import {
   handleAnswer,
   handleIce,
@@ -102,6 +103,25 @@ export function App() {
       setError(payload.reason);
     }
 
+    function onAnnounce({ kind }: { kind: "readyCheck" }) {
+      // Map announcement kind to its narrator filename. Try the user's pack;
+      // fall back to bill on load error.
+      const file =
+        kind === "readyCheck" ? "ReadyCheck" : (null as unknown as string | null);
+      if (!file) return;
+      const userPack = loadNarrator() ?? DEFAULT_VOICE_PACK;
+      const a = new Audio(`/voice/${userPack}/${file}.mp3`);
+      let triedFallback = false;
+      a.onerror = () => {
+        if (!triedFallback && userPack !== DEFAULT_VOICE_PACK) {
+          triedFallback = true;
+          const f = new Audio(`/voice/${DEFAULT_VOICE_PACK}/${file}.mp3`);
+          f.play().catch(() => {});
+        }
+      };
+      a.play().catch(() => {});
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:state", onRoomState);
@@ -109,6 +129,7 @@ export function App() {
     socket.on("joined", onJoined);
     socket.on("error", onError);
     socket.on("kicked", onKicked);
+    socket.on("room:announce", onAnnounce);
     // WebRTC signaling — relayed by the server, fed straight into the
     // webrtc module which manages peer connections.
     socket.on("webrtc:offer", ({ from, sdp }) => void handleOffer(from, sdp));
@@ -122,6 +143,7 @@ export function App() {
       socket.off("joined", onJoined);
       socket.off("error", onError);
       socket.off("kicked", onKicked);
+      socket.off("room:announce", onAnnounce);
       socket.off("webrtc:offer");
       socket.off("webrtc:answer");
       socket.off("webrtc:ice");

@@ -61,6 +61,9 @@ export interface PublicRoom {
   // Set when new joiners should be force-locked to spectator on arrival.
   // Lets the host gate who can join the active player list.
   spectatorsAutoLock?: boolean;
+  // Set when the host has hit "Mute all" — every non-host mic is gated off
+  // so the host can make announcements without interruption.
+  mutedExceptHost?: boolean;
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; length must equal players.length + 3
@@ -279,6 +282,9 @@ export interface ServerToClient {
   "webrtc:offer": (payload: { from: string; sdp: SignalingDescription }) => void;
   "webrtc:answer": (payload: { from: string; sdp: SignalingDescription }) => void;
   "webrtc:ice": (payload: { from: string; candidate: SignalingIceCandidate }) => void;
+  // Server-fanned announcement that every connected client plays as a
+  // narrator clip (in their preferred pack, bill fallback).
+  "room:announce": (payload: { kind: "readyCheck" }) => void;
 }
 
 export interface ClientToServer {
@@ -325,6 +331,11 @@ export interface ClientToServer {
   "lobby:muteSpectators": (payload: { muted: boolean }) => void;
   // Host toggles whether new joiners arrive force-spectated.
   "lobby:setSpectatorsAutoLock": (payload: { autoLock: boolean }) => void;
+  // Host toggles "mute everyone except me" for announcement mode.
+  "lobby:muteAllExceptHost": (payload: { muted: boolean }) => void;
+  // Host fires a ready-check announcement — server fans out a room:announce
+  // to every connected client, which plays the matching narrator clip.
+  "lobby:announceReadyCheck": () => void;
   "lobby:start": () => void;
   "room:pause": (payload: { paused: boolean }) => void;
   "night:action": (payload: NightAction) => void;

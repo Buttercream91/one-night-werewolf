@@ -198,6 +198,22 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:muteAllExceptHost", ({ muted }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setMutedExceptHost(attachedPlayerId, !!muted);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:announceReadyCheck", () => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (room.hostId !== attachedPlayerId) return;
+    if (room.phase !== "lobby") return;
+    room.io.to(room.code).emit("room:announce", { kind: "readyCheck" });
+  });
+
   socket.on("lobby:start", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

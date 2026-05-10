@@ -262,20 +262,38 @@ export function Lobby({ room, me }: Props) {
             </>
           )}
           {isHost ? (
-            <button
-              className="btn-primary"
-              disabled={!valid}
-              onClick={() => send.start()}
-              title={
-                valid
-                  ? "Start the game"
-                  : !everyoneReady
-                    ? "Waiting for all players to ready up"
-                    : `Need ${targetCount} role cards and 3+ active players to start`
-              }
-            >
-              Start game
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  className={room.mutedExceptHost ? "btn-ghost" : "btn-ghost"}
+                  onClick={() => send.muteAllExceptHost(!room.mutedExceptHost)}
+                  title="Toggle a global mute for everyone except you"
+                >
+                  {room.mutedExceptHost ? "🔊 Unmute all" : "🔇 Mute all"}
+                </button>
+                <button
+                  className="btn-primary"
+                  disabled={!valid}
+                  onClick={() => send.start()}
+                  title={
+                    valid
+                      ? "Start the game"
+                      : !everyoneReady
+                        ? "Waiting for all players to ready up"
+                        : `Need ${targetCount} role cards and 3+ active players to start`
+                  }
+                >
+                  Start game
+                </button>
+              </div>
+              <button
+                className="btn-ghost text-sm"
+                onClick={() => send.announceReadyCheck()}
+                title="Plays a 'readiness check' narration on every player's device"
+              >
+                📢 Announce ready check
+              </button>
+            </div>
           ) : iAmSpectator ? (
             <span className="text-sm text-slate-400 italic">
               Spectating — waiting for the host to start
@@ -290,6 +308,11 @@ export function Lobby({ room, me }: Props) {
           )}
         </div>
       </div>
+      {room.mutedExceptHost && (
+        <div className="text-center text-xs text-amber-300">
+          🔇 Announcement mode — everyone but the host is muted.
+        </div>
+      )}
     </div>
   );
 }

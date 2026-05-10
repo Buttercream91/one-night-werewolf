@@ -43,6 +43,8 @@ export const send = {
   muteSpectators: (muted: boolean) => socket.emit("lobby:muteSpectators", { muted }),
   setSpectatorsAutoLock: (autoLock: boolean) =>
     socket.emit("lobby:setSpectatorsAutoLock", { autoLock }),
+  muteAllExceptHost: (muted: boolean) => socket.emit("lobby:muteAllExceptHost", { muted }),
+  announceReadyCheck: () => socket.emit("lobby:announceReadyCheck"),
   start: () => socket.emit("lobby:start"),
   nightAction: (action: Parameters<ClientToServer["night:action"]>[0]) =>
     socket.emit("night:action", action),

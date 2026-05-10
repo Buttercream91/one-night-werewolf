@@ -81,6 +81,9 @@ export class Room {
   // so they can't opt themselves into the active player list — the host has
   // to release them via the regular force-spectate menu.
   spectatorsAutoLock = false;
+  // Host-only "announcement mode" — everyone but the host has their mic
+  // gated off. Used to silence the room while the host speaks.
+  mutedExceptHost = false;
 
   // Game-time:
   centerCards: Role[] = [];
@@ -498,6 +501,7 @@ export class Room {
       spectatorsMuted: this.spectatorsMuted || undefined,
       privateRoom: this.privateRoom || undefined,
       spectatorsAutoLock: this.spectatorsAutoLock || undefined,
+      mutedExceptHost: this.mutedExceptHost || undefined,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -646,6 +650,12 @@ export class Room {
   setSpectatorsAutoLock(hostId: string, autoLock: boolean): ActionResult {
     if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
     this.spectatorsAutoLock = autoLock;
+    return { ok: true };
+  }
+
+  setMutedExceptHost(hostId: string, muted: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    this.mutedExceptHost = muted;
     return { ok: true };
   }
 
