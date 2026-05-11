@@ -255,6 +255,8 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return `Stole from ${nameOf(n.targetId)} and is now ${label(n.role)}.`;
     case "troublemaker_swapped":
       return `Swapped ${nameOf(n.targetIds[0])} and ${nameOf(n.targetIds[1])}.`;
+    case "drunk_swapped":
+      return `Took centre #${n.centerIndex + 1} (unseen).`;
     case "insomniac_self":
       return `Confirmed own card: ${label(n.role)}.`;
   }

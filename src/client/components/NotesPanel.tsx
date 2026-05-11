@@ -115,6 +115,8 @@ function describeNote(n: PrivateView["notes"][number], nameOf: (id: string) => s
       return `You robbed ${nameOf(n.targetId)} and now hold ${ROLE_META[n.role].label}.`;
     case "troublemaker_swapped":
       return `You swapped the cards of ${nameOf(n.targetIds[0])} and ${nameOf(n.targetIds[1])}.`;
+    case "drunk_swapped":
+      return `You took centre card #${n.centerIndex + 1} (you didn't see it).`;
     case "insomniac_self":
       return `Your card is now ${ROLE_META[n.role].label}.`;
   }

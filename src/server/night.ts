@@ -422,6 +422,7 @@ export function applyNightAction(
       room.swapPlayerWithCenter(player.id, action.centerIndex);
       player.cardFaceDown = true;
       player.knownCurrentRole = undefined;
+      player.notes.push({ kind: "drunk_swapped", centerIndex: action.centerIndex });
       room.actionLog.push({
         kind: "drunk_swapped",
         actorId: player.id,

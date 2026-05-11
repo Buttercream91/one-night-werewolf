@@ -274,6 +274,10 @@ export type NightNote =
   // record of which two players' cards they swapped, so they can reference
   // it during the day.
   | { kind: "troublemaker_swapped"; targetIds: [string, string] }
+  // Drunk took a centre card without looking. We record which centre slot
+  // so they can reference it during the day — they still don't know what
+  // they actually hold.
+  | { kind: "drunk_swapped"; centerIndex: number }
   | { kind: "insomniac_self"; role: Role };
 
 // Action prompts sent to a single player during the night.
