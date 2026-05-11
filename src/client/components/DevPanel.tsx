@@ -7,6 +7,8 @@ import { send } from "../socket.js";
 interface Props {
   room: PublicRoom;
   me: PrivateView | null;
+  previewSpectator: boolean;
+  onTogglePreview: () => void;
   onClose: () => void;
 }
 
@@ -14,7 +16,7 @@ interface Props {
 // The panel is shown to anyone who triggered it locally, but every action
 // here is server-side gated to the host. Non-hosts will see error toasts if
 // they try to run dev actions.
-export function DevPanel({ room, me, onClose }: Props) {
+export function DevPanel({ room, me, previewSpectator, onTogglePreview, onClose }: Props) {
   const meIsHost = !!me && !!room.players.find((p) => p.id === me.myId)?.isHost;
   const phase = room.phase;
   const [botCount, setBotCount] = useState(3);
@@ -63,6 +65,27 @@ export function DevPanel({ room, me, onClose }: Props) {
               onClick={() => send.devSetMode(!room.devMode)}
             >
               {room.devMode ? "Disable" : "Enable"}
+            </button>
+          </div>
+        </Section>
+
+        <Section label="Preview spectator view">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-slate-300">
+              {previewSpectator
+                ? "Currently rendering the spectator UI on your screen."
+                : "Render the spectator UI on your screen using dev god-view data."}
+            </span>
+            <button
+              onClick={onTogglePreview}
+              className={
+                previewSpectator
+                  ? "btn-ghost text-xs px-2 py-1"
+                  : "btn-primary text-xs px-2 py-1"
+              }
+              title="Needs server dev mode on (host gets devVision)"
+            >
+              {previewSpectator ? "Stop preview" : "Preview"}
             </button>
           </div>
         </Section>

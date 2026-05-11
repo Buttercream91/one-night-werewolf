@@ -62,6 +62,7 @@ export function App() {
   // the 'o' in Werewolf. Server-side dev mode is a separate toggle inside
   // the panel; this state just controls whether the panel renders.
   const [devOpen, setDevOpen] = useState(false);
+  const [previewSpectator, setPreviewSpectator] = useState(false);
   const devClickCount = useRef(0);
   const devLastClick = useRef(0);
   // Currently-playing announcement clip (e.g. ReadyCheck). Tracked so we can
@@ -301,7 +302,13 @@ export function App() {
       <AudioBlockedBanner />
 
       {devOpen && room && (
-        <DevPanel room={room} me={me} onClose={() => setDevOpen(false)} />
+        <DevPanel
+          room={room}
+          me={me}
+          previewSpectator={previewSpectator}
+          onTogglePreview={() => setPreviewSpectator((p) => !p)}
+          onClose={() => setDevOpen(false)}
+        />
       )}
 
       {!session && showTutorial && <Tutorial onExit={() => setShowTutorial(false)} />}
@@ -310,7 +317,9 @@ export function App() {
       )}
       {session && !room && <div className="mx-auto max-w-md panel text-center">Joining room…</div>}
       {session && room && room.phase === "lobby" && <Lobby room={room} me={me} />}
-      {session && room && room.phase !== "lobby" && <Game room={room} me={me} />}
+      {session && room && room.phase !== "lobby" && (
+        <Game room={room} me={me} previewSpectator={previewSpectator} />
+      )}
     </div>
   );
 }
