@@ -31,6 +31,9 @@ import { resolveVotes } from "./vote.js";
 const newCode = customAlphabet("BCDFGHJKLMNPQRSTVWXYZ", 4);
 const newId = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 10);
 const MAX_CHAT_MESSAGES = 50;
+// Fixed countdown on the vote phase. Any non-bot blocker who hasn't voted
+// when this expires gets treated as no_kill, then resolveAndReveal runs.
+const VOTE_SECONDS = 20;
 
 type IO = Server<ClientToServer, ServerToClient>;
 
@@ -118,6 +121,9 @@ export class Room {
   nightPendingActors = new Set<string>();
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
+  voteEndsAt?: number;
+  voteTimer?: NodeJS.Timeout;
+  pausedVoteRemainingMs?: number;
   // Active accusations. An accuser may hold accusations against multiple
   // distinct targets, so this is a flat array. (accuserId, targetId) pairs
   // are unique — re-accusing the same target replaces the existing entry.
@@ -380,6 +386,12 @@ export class Room {
     this.paused = false;
     this.pausedNightRemainingMs = undefined;
     this.pausedDayRemainingMs = undefined;
+    this.pausedVoteRemainingMs = undefined;
+    this.voteEndsAt = undefined;
+    if (this.voteTimer) {
+      clearTimeout(this.voteTimer);
+      this.voteTimer = undefined;
+    }
     this.players = this.players.filter((p) => p.connected);
     if (this.hostId && !this.hasPlayer(this.hostId)) {
       this.hostId = this.players[0]?.id ?? null;
@@ -528,6 +540,30 @@ export class Room {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;
     }
+    // 20s vote countdown. When it expires, any unvoted blocker is treated
+    // as no_kill and the round resolves. Speed multiplier scales it for
+    // dev testing.
+    const mult = Math.max(1, this.devSpeedMultiplier);
+    const voteMs = (VOTE_SECONDS * 1000) / mult;
+    this.voteEndsAt = Date.now() + voteMs;
+    if (this.voteTimer) clearTimeout(this.voteTimer);
+    this.voteTimer = setTimeout(() => {
+      this.forceResolveVote();
+      this.broadcast();
+    }, voteMs + 100);
+  }
+
+  // Called by the vote timer when time's up. Stamps no_kill on anyone who
+  // hasn't voted (active, connected, non-bot — bots' votes default null and
+  // are filtered out of the tally anyway), then resolves.
+  private forceResolveVote() {
+    if (this.phase !== "vote") return;
+    for (const p of this.players) {
+      if (p.spectating) continue;
+      if (p.bot) continue;
+      if (p.vote == null) p.vote = "no_kill";
+    }
+    this.resolveAndReveal();
   }
 
   castVote(playerId: string, targetId: string): ActionResult {
@@ -554,6 +590,11 @@ export class Room {
   }
 
   resolveAndReveal() {
+    if (this.voteTimer) {
+      clearTimeout(this.voteTimer);
+      this.voteTimer = undefined;
+    }
+    this.voteEndsAt = undefined;
     const { killedIds, winners } = resolveVotes(this);
     this.killedIds = killedIds;
     this.winners = winners;
@@ -601,6 +642,7 @@ export class Room {
       nightStepVoiceFile: this.nightStepVoiceFile,
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
+      voteEndsAt: this.voteEndsAt,
       readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
       paused: this.paused || undefined,
       accusations:
@@ -964,6 +1006,12 @@ export class Room {
         this.dayTimer = undefined;
         this.dayEndsAt = undefined;
       }
+      if (this.voteEndsAt && this.voteTimer) {
+        this.pausedVoteRemainingMs = Math.max(0, this.voteEndsAt - Date.now());
+        clearTimeout(this.voteTimer);
+        this.voteTimer = undefined;
+        this.voteEndsAt = undefined;
+      }
       this.paused = true;
     } else {
       // Re-create timers using the captured remaining ms.
@@ -984,6 +1032,15 @@ export class Room {
           this.broadcast();
         }, ms + 100);
         this.pausedDayRemainingMs = undefined;
+      }
+      if (this.pausedVoteRemainingMs != null) {
+        const ms = this.pausedVoteRemainingMs;
+        this.voteEndsAt = Date.now() + ms;
+        this.voteTimer = setTimeout(() => {
+          this.forceResolveVote();
+          this.broadcast();
+        }, ms + 100);
+        this.pausedVoteRemainingMs = undefined;
       }
       this.paused = false;
     }

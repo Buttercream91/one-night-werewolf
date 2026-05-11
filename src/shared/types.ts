@@ -113,6 +113,9 @@ export interface PublicRoom {
   // Day:
   dayEndsAt?: number; // epoch ms
   daySeconds?: number; // configured length
+  // Vote phase has a fixed 20s countdown that auto-resolves with no_kill for
+  // anyone who hasn't voted.
+  voteEndsAt?: number;
   readyPlayerIds?: string[];
   // Public accusations made during the day. Each accuser can hold at most
   // one active accusation, replacing any previous one.

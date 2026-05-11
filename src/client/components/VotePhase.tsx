@@ -3,6 +3,7 @@ import type { PrivateView, PublicRoom } from "../../shared/types.js";
 import { DEFAULT_VOICE_PACK } from "../../shared/types.js";
 import { send } from "../socket.js";
 import { loadNarrator } from "../storage.js";
+import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
 import { NotesPanel } from "./NotesPanel.js";
@@ -17,8 +18,11 @@ export function VotePhase({ room, me }: Props) {
   const myVote = room.players.find((p) => p.id === me.myId)?.votedFor ?? null;
   // Spectators are out of the round — not vote targets and not vote sources.
   const activePlayers = room.players.filter((p) => !p.spectating);
-  const total = activePlayers.length;
-  const cast = activePlayers.filter((p) => p.votedFor != null).length;
+  // Bots don't show in the active blocker count — their votes auto-resolve.
+  const voters = activePlayers.filter((p) => !p.bot);
+  const total = voters.length;
+  const cast = voters.filter((p) => p.votedFor != null).length;
+  const remaining = useCountdown(room.voteEndsAt);
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
 
   // Play the "begin vote" announcement once when this phase mounts. Each
@@ -32,13 +36,26 @@ export function VotePhase({ room, me }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="panel">
-        <h2 className="heading text-xl text-indigo-200">Vote</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Pick the player you want to kill. The reveal happens once everyone has voted.
-        </p>
-        <div className="mt-2 text-xs text-slate-400">
-          {cast}/{total} votes cast
+      <div className="panel flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="heading text-xl text-indigo-200">Vote</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Pick the player you want to kill. The reveal happens once everyone has voted, or when
+            the timer runs out.
+          </p>
+          <div className="mt-2 text-xs text-slate-400">
+            {cast}/{total} votes cast
+          </div>
+        </div>
+        <div className="text-right">
+          <div
+            className={`font-mono text-3xl tabular-nums ${
+              remaining <= 5 ? "text-rose-300" : "text-slate-100"
+            }`}
+          >
+            {remaining}s
+          </div>
+          <div className="text-xs text-slate-400">until reveal</div>
         </div>
       </div>
 
@@ -51,6 +68,10 @@ export function VotePhase({ room, me }: Props) {
               {activePlayers.map((p) => {
                 const selected = myVote === p.id;
                 const isSelf = p.id === me.myId;
+                const hasVoted = p.votedFor != null;
+                // Bots auto-resolve when time's up — no point showing them as
+                // 'waiting' the whole 20 seconds.
+                const showWaiting = !p.bot && !hasVoted;
                 return (
                   <li key={p.id}>
                     <button
@@ -61,9 +82,16 @@ export function VotePhase({ room, me }: Props) {
                       }`}
                       onClick={() => send.vote(p.id)}
                     >
-                      <div className="font-medium text-slate-100">
-                        {p.name}
-                        {isSelf && <span className="ml-1 text-xs text-slate-400">(you)</span>}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-slate-100">
+                          {p.name}
+                          {isSelf && <span className="ml-1 text-xs text-slate-400">(you)</span>}
+                        </span>
+                        {hasVoted ? (
+                          <span className="text-xs text-emerald-300">✓ voted</span>
+                        ) : showWaiting ? (
+                          <span className="text-xs text-amber-300">waiting</span>
+                        ) : null}
                       </div>
                       <div className="text-xs text-slate-400">
                         {selected ? "Your vote" : "Vote to kill"}
