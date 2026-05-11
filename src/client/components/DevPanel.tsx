@@ -247,15 +247,32 @@ export function DevPanel({ room, me, previewSpectator, onTogglePreview, onClose 
         )}
 
         {phase === "vote" && (
-          <Section label="Vote">
-            <div className="flex flex-wrap items-center gap-2">
+          <Section label="Vote" wide>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <button
                 onClick={() => send.devSkipToPhase("reveal")}
                 className="btn-ghost text-xs px-2 py-1"
               >
                 Skip to Reveal
               </button>
-              <span className="text-xs text-slate-400">Force bot votes →</span>
+            </div>
+            <div className="text-xs text-slate-400 mb-1">Force bot votes:</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => send.devForceBotVotes({ mode: "random" })}
+                className="btn-ghost text-xs px-2 py-1"
+                title="Each bot picks a random target (active player or no_kill)"
+              >
+                🎲 Random
+              </button>
+              <button
+                onClick={() => send.devForceBotVotes({ mode: "matchMe" })}
+                className="btn-ghost text-xs px-2 py-1"
+                title="All bots vote for whoever you voted for (no_kill if unset)"
+              >
+                🤝 Match my vote
+              </button>
+              <span className="text-xs text-slate-500">or specific →</span>
               <select
                 value={voteTarget}
                 onChange={(e) => setVoteTarget(e.target.value)}
@@ -269,7 +286,9 @@ export function DevPanel({ room, me, previewSpectator, onTogglePreview, onClose 
                 ))}
               </select>
               <button
-                onClick={() => send.devForceBotVotes(voteTarget)}
+                onClick={() =>
+                  send.devForceBotVotes({ mode: "target", targetId: voteTarget })
+                }
                 className="btn-ghost text-xs px-2 py-1"
               >
                 Apply

@@ -926,15 +926,41 @@ export class Room {
     return { ok: true };
   }
 
-  forceBotVotes(hostId: string, targetId: string): ActionResult {
+  forceBotVotes(
+    hostId: string,
+    opts: { mode: "target" | "random" | "matchMe"; targetId?: string },
+  ): ActionResult {
     const r = this.requireDev(hostId);
     if (!r.ok) return r;
     if (this.phase !== "vote") return { ok: false, error: "Only in vote phase" };
-    if (targetId !== "no_kill" && !this.hasPlayer(targetId)) {
-      return { ok: false, error: "Unknown target" };
-    }
+
+    // Build the random pool once — every active (non-spectator) player ID
+    // plus "no_kill". Bots and the host are valid targets too.
+    const randomPool: string[] = ["no_kill"];
     for (const p of this.players) {
-      if (p.bot && !p.spectating) p.vote = targetId;
+      if (!p.spectating) randomPool.push(p.id);
+    }
+
+    let fixedTarget: string | null = null;
+    if (opts.mode === "target") {
+      if (typeof opts.targetId !== "string") {
+        return { ok: false, error: "Target required" };
+      }
+      if (opts.targetId !== "no_kill" && !this.hasPlayer(opts.targetId)) {
+        return { ok: false, error: "Unknown target" };
+      }
+      fixedTarget = opts.targetId;
+    } else if (opts.mode === "matchMe") {
+      const host = this.players.find((q) => q.id === hostId);
+      fixedTarget = host?.vote ?? "no_kill";
+    }
+
+    for (const p of this.players) {
+      if (!p.bot || p.spectating) continue;
+      p.vote =
+        opts.mode === "random"
+          ? randomPool[Math.floor(Math.random() * randomPool.length)]
+          : (fixedTarget as string);
     }
     // Try to resolve if every non-bot blocker has voted.
     const blockers = this.players.filter(

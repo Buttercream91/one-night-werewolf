@@ -380,11 +380,11 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
-  socket.on("dev:forceBotVotes", ({ targetId }) => {
+  socket.on("dev:forceBotVotes", ({ mode, targetId }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
-    if (typeof targetId !== "string") return;
-    const r = room.forceBotVotes(attachedPlayerId, targetId);
+    if (mode !== "target" && mode !== "random" && mode !== "matchMe") return;
+    const r = room.forceBotVotes(attachedPlayerId, { mode, targetId });
     if (!r.ok) return socket.emit("error", { message: r.error });
     room.broadcast();
   });

@@ -83,6 +83,10 @@ export const send = {
   devSkipNightStep: () => socket.emit("dev:skipNightStep"),
   devSkipToPhase: (phase: "night" | "day" | "vote" | "reveal") =>
     socket.emit("dev:skipToPhase", { phase }),
-  devForceBotVotes: (targetId: string | "no_kill") =>
-    socket.emit("dev:forceBotVotes", { targetId }),
+  devForceBotVotes: (
+    opts:
+      | { mode: "target"; targetId: string | "no_kill" }
+      | { mode: "random" }
+      | { mode: "matchMe" },
+  ) => socket.emit("dev:forceBotVotes", opts),
 };

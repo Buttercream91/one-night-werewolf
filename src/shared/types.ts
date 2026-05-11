@@ -421,7 +421,12 @@ export interface ClientToServer {
   "dev:skipNightStep": () => void;
   "dev:skipToPhase": (payload: { phase: Phase }) => void;
   "dev:setSpeed": (payload: { multiplier: number }) => void;
-  "dev:forceBotVotes": (payload: { targetId: string | "no_kill" }) => void;
+  // mode "target" needs targetId; "random" picks per-bot from active players
+  // and no_kill; "matchMe" copies the caller's current vote (or no_kill).
+  "dev:forceBotVotes": (payload: {
+    mode: "target" | "random" | "matchMe";
+    targetId?: string;
+  }) => void;
   // Voice chat: client tells server when it has mic access (or has stopped).
   // Server marks the player and broadcasts so peers know to negotiate.
   "audio:setReady": (payload: { ready: boolean }) => void;
