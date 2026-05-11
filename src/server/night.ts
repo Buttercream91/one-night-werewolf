@@ -52,7 +52,7 @@ export const STEP_SECONDS: Record<NightStep, number> = {
   troublemaker: 15,
   drunk: 9,
   insomniac: 7,
-  outro: 6,
+  outro: 4,
 };
 
 // Action applied to actors who don't submit before their step ends.
