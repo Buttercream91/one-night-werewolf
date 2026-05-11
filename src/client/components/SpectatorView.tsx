@@ -3,6 +3,7 @@ import { ROLE_META } from "../../shared/types.js";
 import { playerColor } from "../playerColor.js";
 import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
+import { DevModeTag } from "./DevModeTag.js";
 import { RoleCard } from "./RoleCard.js";
 
 interface Props {
@@ -118,7 +119,10 @@ export function SpectatorView({ room, me }: Props) {
                         <span className="text-slate-400 text-xs transition-transform group-open:rotate-90">
                           ▶
                         </span>
-                        <span className={`font-medium ${nameCls}`}>{p.name}</span>
+                        <span className={`font-medium ${nameCls}`}>
+                          {p.name}
+                          <DevModeTag show={!!room.devMode && p.isHost} />
+                        </span>
                         {v && (
                           <span className="text-xs text-slate-300 bg-slate-900/70 border border-slate-700 rounded px-1.5 py-0.5">
                             {ROLE_META[v.currentRole].label}

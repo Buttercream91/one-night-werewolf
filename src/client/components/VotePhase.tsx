@@ -6,6 +6,7 @@ import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
+import { DevModeTag } from "./DevModeTag.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
 
@@ -86,6 +87,7 @@ export function VotePhase({ room, me }: Props) {
                         <span className="font-medium text-slate-100">
                           {p.name}
                           {isSelf && <span className="ml-1 text-xs text-slate-400">(you)</span>}
+                          <DevModeTag show={!!room.devMode && p.isHost} />
                         </span>
                         {hasVoted ? (
                           <span className="text-xs text-emerald-300">✓ voted</span>

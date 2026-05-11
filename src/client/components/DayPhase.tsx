@@ -7,6 +7,7 @@ import { useCountdown } from "../useCountdown.js";
 import { useSpeakingLevel } from "../webrtc.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { CenterCards } from "./CenterCards.js";
+import { DevModeTag } from "./DevModeTag.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { PlayerMenu } from "./PlayerMenu.js";
 import { RoleCard } from "./RoleCard.js";
@@ -138,7 +139,10 @@ function DayPlayerTile({
       } ${ring}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className={`font-medium ${nameCls}`}>{player.name}</span>
+        <span className={`font-medium ${nameCls}`}>
+          {player.name}
+          <DevModeTag show={!!room.devMode && player.isHost} />
+        </span>
         <div className="flex items-center gap-1">
           {ready && <span className="text-xs text-emerald-300">ready</span>}
           <PlayerMenu target={player} room={room} myId={me.myId} where="game" />

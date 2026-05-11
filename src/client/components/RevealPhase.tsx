@@ -3,6 +3,7 @@ import type { PrivateView, PublicRoom, Role, WinnerSide } from "../../shared/typ
 import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
 import { send } from "../socket.js";
 import { loadNarrator } from "../storage.js";
+import { DevModeTag } from "./DevModeTag.js";
 import { GameLog } from "./GameLog.js";
 import { NotesPanel } from "./NotesPanel.js";
 import { RoleCard } from "./RoleCard.js";
@@ -63,7 +64,10 @@ export function RevealPhase({ room, me }: Props) {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{p.name}</div>
+                    <div className="font-medium">
+                      {p.name}
+                      <DevModeTag show={!!room.devMode && p.isHost} />
+                    </div>
                     <div className="text-xs text-slate-400">
                       voted{" "}
                       <span className="text-slate-300">

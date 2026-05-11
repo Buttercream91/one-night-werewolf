@@ -8,6 +8,7 @@ import { loadNarrator, saveNarrator } from "../storage.js";
 import { useSpeakingLevel } from "../webrtc.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { CopyableCode } from "./CopyableCode.js";
+import { DevModeTag } from "./DevModeTag.js";
 import { PlayerMenu } from "./PlayerMenu.js";
 import { ROLE_IMAGE } from "./RoleCard.js";
 
@@ -377,6 +378,7 @@ function LobbyPlayerTile({
         <span className={`font-medium ${nameCls}`}>
           {player.name}
           {isMe && <span className="ml-1 text-xs text-indigo-300">(you)</span>}
+          <DevModeTag show={!!room.devMode && player.isHost} />
         </span>
         <div className="flex items-center gap-1">
           {player.isHost ? (
@@ -420,6 +422,7 @@ function LobbySpectatorTile({
               🔒
             </span>
           )}
+          <DevModeTag show={!!room.devMode && player.isHost} />
         </span>
         {me && <PlayerMenu target={player} room={room} myId={me.myId} where="lobby" />}
       </div>
