@@ -5,6 +5,7 @@ import type {
   ActionLogEntry,
   ChatMessage,
   ClientToServer,
+  DevVision,
   NightAction,
   NightNote,
   NightPrompt,
@@ -53,6 +54,7 @@ export interface ServerPlayer {
   forcedSpectating?: boolean; // Host moved them to spectator; only host releases.
   hasMic?: boolean; // Voice-chat presence flag — set after the client gets mic.
   color?: string; // PlayerColorId — auto-assigned on join, changeable in lobby.
+  bot?: boolean; // Host-added auto-acting player for solo testing.
 }
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -96,6 +98,11 @@ export class Room {
   // accepts any size >= active players + 3 instead of requiring exact match.
   // Extras are dealt into the centre, growing the unknown pool.
   removeCardLimit = false;
+  // Dev mode (host-only). Enables the dev panel's server-side actions.
+  devMode = false;
+  // Multiplier applied to upcoming night-step + day-phase durations. 1 by
+  // default; the dev panel lets the host set 1/2/5/10 etc.
+  devSpeedMultiplier = 1;
   // Lobby chat ring buffer. Capped at MAX_CHAT_MESSAGES; cleared on game
   // start. Broadcast as part of PublicRoom only in the lobby phase.
   chatMessages: ChatMessage[] = [];
@@ -174,16 +181,17 @@ export class Room {
     }
   }
 
-  // Pick a sensible new host. Prefer a connected, non-spectator player; fall
-  // back to any connected player; finally fall back to null. Used when the
-  // current host leaves the room or moves themselves to spectator (a host
-  // who's spectating shouldn't gate the round / new-game button).
+  // Pick a sensible new host. Prefer a connected, non-spectator, non-bot
+  // player; fall back to any connected non-bot player; finally fall back to
+  // null. Bots are skipped because they have no real socket to act through.
   private pickFallbackHost(excludeId: string): string | null {
     const active = this.players.find(
-      (p) => p.id !== excludeId && p.connected && !p.spectating,
+      (p) => p.id !== excludeId && p.connected && !p.spectating && !p.bot,
     );
     if (active) return active.id;
-    const anyConnected = this.players.find((p) => p.id !== excludeId && p.connected);
+    const anyConnected = this.players.find(
+      (p) => p.id !== excludeId && p.connected && !p.bot,
+    );
     return anyConnected?.id ?? null;
   }
 
@@ -223,7 +231,7 @@ export class Room {
 
   // ---- Lobby → game ----
 
-  startGame(): ActionResult {
+  startGame(opts?: { skipReadyCheck?: boolean; manualRoles?: Record<string, Role> }): ActionResult {
     if (this.phase !== "lobby") return { ok: false, error: "Game already started" };
     const activePlayers = this.players.filter((p) => !p.spectating);
     const numPlayers = activePlayers.length;
@@ -242,10 +250,15 @@ export class Room {
         error: `Need exactly ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
       };
     }
-    // Only non-host active players need to ready up.
-    const notReady = activePlayers.filter((p) => p.id !== this.hostId && !p.lobbyReady);
-    if (notReady.length > 0) {
-      return { ok: false, error: `Waiting on ${notReady.length} player(s) to ready up` };
+    // Only non-host, non-bot active players need to ready up. forceStart can
+    // bypass this entirely.
+    if (!opts?.skipReadyCheck) {
+      const notReady = activePlayers.filter(
+        (p) => p.id !== this.hostId && !p.bot && !p.lobbyReady,
+      );
+      if (notReady.length > 0) {
+        return { ok: false, error: `Waiting on ${notReady.length} player(s) to ready up` };
+      }
     }
     const counts = countRoles(this.selectedRoles);
     for (const [role, count] of Object.entries(counts)) {
@@ -256,7 +269,6 @@ export class Room {
       return { ok: false, error: "Minion requires at least one Werewolf in the deck" };
     }
 
-    const deck = shuffle(this.selectedRoles.slice());
     // Reset shared per-game state on every player (active and spectator).
     this.players.forEach((p) => {
       p.originalRole = undefined;
@@ -270,15 +282,46 @@ export class Room {
       p.ready = false;
       p.lobbyReady = false;
     });
-    // Deal cards only to non-spectator players. Spectators stay in the room
-    // with no role and no card; they watch via spectatorVision.
-    activePlayers.forEach((p, i) => {
-      p.originalRole = deck[i];
-    });
-    // Whatever's left after dealing to players goes to the centre. Default
-    // is exactly 3 (deck = N+3); when removeCardLimit was on the centre can
-    // be larger.
-    this.centerCards = deck.slice(numPlayers);
+    // Deal: honour manualRoles when provided (dev mode), otherwise random
+    // shuffle. Anything not explicitly assigned goes to the centre.
+    let centerDeck: Role[];
+    if (opts?.manualRoles) {
+      const remaining = this.selectedRoles.slice();
+      function take(role: Role): boolean {
+        const i = remaining.indexOf(role);
+        if (i < 0) return false;
+        remaining.splice(i, 1);
+        return true;
+      }
+      for (const p of activePlayers) {
+        const assigned = opts.manualRoles[p.id];
+        if (!assigned) continue;
+        if (!take(assigned)) {
+          return {
+            ok: false,
+            error: `Manual role ${assigned} for ${p.name} isn't in the selected deck`,
+          };
+        }
+        p.originalRole = assigned;
+      }
+      const shuffled = shuffle(remaining);
+      let cursor = 0;
+      for (const p of activePlayers) {
+        if (!p.originalRole) {
+          p.originalRole = shuffled[cursor++];
+        }
+      }
+      centerDeck = shuffled.slice(cursor);
+    } else {
+      const deck = shuffle(this.selectedRoles.slice());
+      activePlayers.forEach((p, i) => {
+        p.originalRole = deck[i];
+      });
+      // Default is exactly 3 (deck = N+3); when removeCardLimit was on the
+      // centre can be larger.
+      centerDeck = deck.slice(numPlayers);
+    }
+    this.centerCards = centerDeck;
     this.originalCenterCards = this.centerCards.slice();
     this.currentRoles.clear();
     for (const p of activePlayers) {
@@ -361,7 +404,7 @@ export class Room {
     const step = this.nightStep;
     this.nightPendingActors.clear();
     setupNightStep(this, step);
-    const ms = STEP_SECONDS[step] * 1000;
+    const ms = (STEP_SECONDS[step] * 1000) / Math.max(1, this.devSpeedMultiplier);
     this.nightStepEndsAt = Date.now() + ms;
     this.nightStepVoiceFile = stepFileFor(step);
     if (this.nightStepTimer) clearTimeout(this.nightStepTimer);
@@ -423,7 +466,9 @@ export class Room {
   beginDay() {
     this.phase = "day";
     this.nightStep = undefined;
-    this.dayEndsAt = Date.now() + this.daySeconds * 1000;
+    const mult = Math.max(1, this.devSpeedMultiplier);
+    const dayMs = (this.daySeconds * 1000) / mult;
+    this.dayEndsAt = Date.now() + dayMs;
     this.players.forEach((p) => {
       p.ready = false;
       p.vote = null;
@@ -435,7 +480,7 @@ export class Room {
         this.beginVote();
         this.broadcast();
       },
-      this.daySeconds * 1000 + 100,
+      dayMs + 100,
     );
   }
 
@@ -470,7 +515,7 @@ export class Room {
     if (p.spectating) return;
     p.ready = ready;
     // Only connected, non-spectating players block the advance.
-    const blockers = this.players.filter((q) => q.connected && !q.spectating);
+    const blockers = this.players.filter((q) => q.connected && !q.spectating && !q.bot);
     if (blockers.length > 0 && blockers.every((q) => q.ready)) {
       this.beginVote();
     }
@@ -501,7 +546,7 @@ export class Room {
       this.actionLog.push({ kind: "vote", voterId: playerId, targetId: targetId as string });
     }
     // Spectators and disconnected players don't gate the resolve.
-    const blockers = this.players.filter((q) => q.connected && !q.spectating);
+    const blockers = this.players.filter((q) => q.connected && !q.spectating && !q.bot);
     if (blockers.length > 0 && blockers.every((q) => q.vote != null)) {
       this.resolveAndReveal();
     }
@@ -533,6 +578,8 @@ export class Room {
       spectatorsBlind: this.spectatorsBlind || undefined,
       removeCardLimit: this.removeCardLimit || undefined,
       centerCardCount: this.phase !== "lobby" ? this.centerCards.length : undefined,
+      devMode: this.devMode || undefined,
+      devSpeedMultiplier: this.devSpeedMultiplier !== 1 ? this.devSpeedMultiplier : undefined,
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -542,6 +589,7 @@ export class Room {
         forcedSpectating: p.forcedSpectating || undefined,
         hasMic: p.hasMic || undefined,
         color: p.color,
+        bot: p.bot || undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
@@ -599,6 +647,30 @@ export class Room {
           })),
         centerCards: this.centerCards.slice(),
       };
+    }
+    // Dev mode god-view for the host: every active player's live role +
+    // original role + notes, plus centre cards and the running action log.
+    // Lets the dev panel show the table state in real time during testing.
+    if (
+      this.devMode &&
+      this.hostId === playerId &&
+      this.phase !== "lobby"
+    ) {
+      const dev: DevVision = {
+        players: this.players
+          .filter((q) => !q.spectating && q.originalRole != null)
+          .map((q) => ({
+            id: q.id,
+            currentRole: this.currentRoles.get(q.id) ?? q.originalRole!,
+            originalRole: q.originalRole!,
+            notes: q.notes,
+            userNotes: q.userNotes,
+            bot: q.bot || undefined,
+          })),
+        centerCards: this.centerCards.slice(),
+        actionLog: this.actionLog.slice(),
+      };
+      view.devVision = dev;
     }
     return view;
   }
@@ -705,6 +777,136 @@ export class Room {
       return { ok: false, error: "Only configurable in the lobby" };
     }
     this.removeCardLimit = remove;
+    return { ok: true };
+  }
+
+  // ---- Dev mode (host-only, gated by devMode) ----
+
+  setDevMode(hostId: string, enabled: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    this.devMode = enabled;
+    if (!enabled) this.devSpeedMultiplier = 1;
+    return { ok: true };
+  }
+
+  setDevSpeed(hostId: string, multiplier: number): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    this.devSpeedMultiplier = Math.max(1, Math.min(20, Math.floor(multiplier)));
+    return { ok: true };
+  }
+
+  addBots(hostId: string, count: number, spectating: boolean): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    if (this.phase !== "lobby") return { ok: false, error: "Add bots in the lobby only" };
+    const n = Math.max(1, Math.min(10, Math.floor(count)));
+    const startN = this.players.filter((p) => p.bot).length + 1;
+    for (let i = 0; i < n; i++) {
+      // Cap at 10 each side just like real joins.
+      const activeCount = this.players.filter((p) => !p.spectating).length;
+      const spectatorCount = this.players.filter((p) => p.spectating).length;
+      if (spectating && spectatorCount >= 10) break;
+      if (!spectating && activeCount >= 10) break;
+      const name = `Bot ${startN + i}`;
+      const player = this.addPlayer(name, "", { spectating });
+      player.bot = true;
+      // Bots are always ready so they never block the host pressing Start.
+      if (!spectating) player.lobbyReady = true;
+    }
+    return { ok: true };
+  }
+
+  clearBots(hostId: string): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    if (this.phase !== "lobby") return { ok: false, error: "Clear bots in the lobby only" };
+    this.players = this.players.filter((p) => !p.bot);
+    return { ok: true };
+  }
+
+  forceStart(hostId: string, manualRoles?: Record<string, Role>): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    return this.startGame({ skipReadyCheck: true, manualRoles });
+  }
+
+  skipNightStep(hostId: string): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    if (this.phase !== "night") return { ok: false, error: "Not in night" };
+    if (this.nightStepTimer) {
+      clearTimeout(this.nightStepTimer);
+      this.nightStepTimer = undefined;
+    }
+    this.endNightStep();
+    return { ok: true };
+  }
+
+  skipToPhase(hostId: string, target: Phase): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    if (target === "lobby") return { ok: false, error: "Use Reset to go back to lobby" };
+    const order = { lobby: 0, night: 1, day: 2, vote: 3, reveal: 4 } as const;
+    if (order[this.phase] >= order[target]) {
+      return { ok: false, error: "Target phase is at or before the current phase" };
+    }
+    // Safety cap — advance one phase at a time.
+    let steps = 8;
+    while (this.phase !== target && order[this.phase] < order[target] && steps-- > 0) {
+      if (this.phase === "night") {
+        // Burn through every remaining night step, applying defaults.
+        let nightSteps = 20;
+        while (this.nightStep && nightSteps-- > 0) {
+          if (this.nightStepTimer) {
+            clearTimeout(this.nightStepTimer);
+            this.nightStepTimer = undefined;
+          }
+          this.endNightStep();
+          // endNightStep transitions to day when steps run out — break to
+          // re-check the outer condition.
+          if (this.phase !== "night") break;
+        }
+      } else if (this.phase === "day") {
+        if (this.dayTimer) {
+          clearTimeout(this.dayTimer);
+          this.dayTimer = undefined;
+        }
+        this.beginVote();
+      } else if (this.phase === "vote") {
+        // Set everyone who hasn't voted to no_kill so resolve has a vote map.
+        for (const p of this.players) {
+          if (!p.spectating && p.vote == null) p.vote = "no_kill";
+        }
+        this.resolveAndReveal();
+      }
+    }
+    return { ok: true };
+  }
+
+  forceBotVotes(hostId: string, targetId: string): ActionResult {
+    const r = this.requireDev(hostId);
+    if (!r.ok) return r;
+    if (this.phase !== "vote") return { ok: false, error: "Only in vote phase" };
+    if (targetId !== "no_kill" && !this.hasPlayer(targetId)) {
+      return { ok: false, error: "Unknown target" };
+    }
+    for (const p of this.players) {
+      if (p.bot && !p.spectating) p.vote = targetId;
+    }
+    // Try to resolve if every non-bot blocker has voted.
+    const blockers = this.players.filter(
+      (q) => q.connected && !q.spectating && !q.bot,
+    );
+    if (blockers.length === 0 || blockers.every((q) => q.vote != null)) {
+      this.resolveAndReveal();
+    }
+    return { ok: true };
+  }
+
+  private requireDev(hostId: string): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (!this.devMode) return { ok: false, error: "Dev mode isn't enabled" };
     return { ok: true };
   }
 
@@ -862,7 +1064,7 @@ export class Room {
     }
     // Day: re-check completion now that the spectator no longer counts.
     if (this.phase === "day") {
-      const blockers = this.players.filter((q) => q.connected && !q.spectating);
+      const blockers = this.players.filter((q) => q.connected && !q.spectating && !q.bot);
       if (blockers.length > 0 && blockers.every((q) => q.ready)) {
         this.beginVote();
       }
@@ -870,7 +1072,7 @@ export class Room {
     // Vote: re-check completion. Spectators don't vote at all — they're
     // skipped entirely from the resolve check.
     if (this.phase === "vote") {
-      const blockers = this.players.filter((q) => q.connected && !q.spectating);
+      const blockers = this.players.filter((q) => q.connected && !q.spectating && !q.bot);
       if (blockers.length > 0 && blockers.every((q) => q.vote != null)) {
         this.resolveAndReveal();
       }

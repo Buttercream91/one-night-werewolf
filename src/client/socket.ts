@@ -72,4 +72,17 @@ export const send = {
   addNote: (text: string) => socket.emit("note:add", { text }),
   removeNote: (index: number) => socket.emit("note:remove", { index }),
   chat: (text: string) => socket.emit("lobby:chat:send", { text }),
+  // Dev panel (host-only on the server).
+  devSetMode: (enabled: boolean) => socket.emit("dev:setMode", { enabled }),
+  devSetSpeed: (multiplier: number) => socket.emit("dev:setSpeed", { multiplier }),
+  devAddBots: (count: number, spectating: boolean) =>
+    socket.emit("dev:addBots", { count, spectating }),
+  devClearBots: () => socket.emit("dev:clearBots"),
+  devForceStart: (manualRoles?: Record<string, Role>) =>
+    socket.emit("dev:forceStart", { manualRoles }),
+  devSkipNightStep: () => socket.emit("dev:skipNightStep"),
+  devSkipToPhase: (phase: "night" | "day" | "vote" | "reveal") =>
+    socket.emit("dev:skipToPhase", { phase }),
+  devForceBotVotes: (targetId: string | "no_kill") =>
+    socket.emit("dev:forceBotVotes", { targetId }),
 };

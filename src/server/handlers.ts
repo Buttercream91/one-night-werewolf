@@ -320,6 +320,75 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
   socket.on("webrtc:answer", (p) => relaySignaling("webrtc:answer", p));
   socket.on("webrtc:ice", (p) => relaySignaling("webrtc:ice", p));
 
+  // ---- Dev panel ----
+
+  socket.on("dev:setMode", ({ enabled }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const r = room.setDevMode(attachedPlayerId, !!enabled);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:setSpeed", ({ multiplier }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof multiplier !== "number") return;
+    const r = room.setDevSpeed(attachedPlayerId, multiplier);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:addBots", ({ count, spectating }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const r = room.addBots(attachedPlayerId, count, !!spectating);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:clearBots", () => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const r = room.clearBots(attachedPlayerId);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:forceStart", ({ manualRoles }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const r = room.forceStart(attachedPlayerId, manualRoles);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:skipNightStep", () => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const r = room.skipNightStep(attachedPlayerId);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:skipToPhase", ({ phase }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof phase !== "string") return;
+    const r = room.skipToPhase(attachedPlayerId, phase as never);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
+  socket.on("dev:forceBotVotes", ({ targetId }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (typeof targetId !== "string") return;
+    const r = room.forceBotVotes(attachedPlayerId, targetId);
+    if (!r.ok) return socket.emit("error", { message: r.error });
+    room.broadcast();
+  });
+
   socket.on("room:reset", () => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

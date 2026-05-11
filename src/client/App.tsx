@@ -4,6 +4,7 @@ import { CopyableCode } from "./components/CopyableCode.js";
 import { Game } from "./components/Game.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
+import { DevPanel } from "./components/DevPanel.js";
 import { Tutorial } from "./components/Tutorial.js";
 import { joinRoom, send, socket } from "./socket.js";
 import {
@@ -57,6 +58,12 @@ export function App() {
   const [everConnected, setEverConnected] = useState(socket.connected);
   const [error, setError] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
+  // Local dev mode (UI panel visibility) — unlocked by 5 quick clicks on
+  // the 'o' in Werewolf. Server-side dev mode is a separate toggle inside
+  // the panel; this state just controls whether the panel renders.
+  const [devOpen, setDevOpen] = useState(false);
+  const devClickCount = useRef(0);
+  const devLastClick = useRef(0);
   // Currently-playing announcement clip (e.g. ReadyCheck). Tracked so we can
   // stop it when the round leaves the lobby — once the host hits Start, no
   // need to keep narrating that a ready check is in progress.
@@ -228,7 +235,26 @@ export function App() {
   return (
     <div className="min-h-screen px-4 py-6 sm:py-10">
       <header className="mx-auto max-w-7xl mb-6 flex items-center justify-between">
-        <h1 className="heading text-2xl sm:text-3xl text-indigo-200">One Night Werewolf</h1>
+        <h1 className="heading text-2xl sm:text-3xl text-indigo-200">
+          One Night Werew
+          <span
+            onClick={() => {
+              const now = Date.now();
+              if (now - devLastClick.current > 1500) devClickCount.current = 1;
+              else devClickCount.current += 1;
+              devLastClick.current = now;
+              if (devClickCount.current >= 5) {
+                setDevOpen((d) => !d);
+                devClickCount.current = 0;
+              }
+            }}
+            className="cursor-default select-none"
+            title=""
+          >
+            o
+          </span>
+          lf
+        </h1>
         <div className="flex items-center gap-3 text-sm">
           {!connected && everConnected && (
             <span className="text-amber-300">Reconnecting…</span>
@@ -273,6 +299,10 @@ export function App() {
       )}
 
       <AudioBlockedBanner />
+
+      {devOpen && room && (
+        <DevPanel room={room} me={me} onClose={() => setDevOpen(false)} />
+      )}
 
       {!session && showTutorial && <Tutorial onExit={() => setShowTutorial(false)} />}
       {!session && !showTutorial && (

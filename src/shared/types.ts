@@ -23,6 +23,10 @@ export interface PublicPlayer {
   name: string;
   connected: boolean;
   isHost: boolean;
+  // Bot players are added by the host via the dev panel for solo testing.
+  // They have no socket; the server auto-defaults their night actions and
+  // excludes them from ready/vote completion checks.
+  bot?: boolean;
   // Player chose "Back to lobby" during an active game. Their card stays in
   // play (deck size is fixed at deal time), but they no longer act, vote, or
   // hold up phase advancement. Resets at game start / reset to lobby.
@@ -64,6 +68,12 @@ export interface PublicRoom {
   // Set when new joiners should be force-locked to spectator on arrival.
   // Lets the host gate who can join the active player list.
   spectatorsAutoLock?: boolean;
+  // Dev-mode flag — gates all dev:* server actions. Toggled by the host
+  // from the 5-click DevPanel.
+  devMode?: boolean;
+  // Multiplier applied to upcoming night-step and day-phase durations.
+  // 1 = normal. Higher = faster. Only effective when devMode is true.
+  devSpeedMultiplier?: number;
   // Recent lobby chat messages (capped). Only present in the lobby phase
   // — cleared at game start.
   chatMessages?: ChatMessage[];
@@ -212,6 +222,10 @@ export interface PrivateView {
   // into every active player's current role and personal notes, refreshed on
   // every broadcast. Active players never receive this field.
   spectatorVision?: SpectatorVision;
+  // Populated only for the host when room.devMode is on. Carries live role
+  // assignments, centre cards, and the running action log so the dev panel
+  // can show god-mode info.
+  devVision?: DevVision;
 }
 
 // Live snapshot of the table that spectators see. Updates with every
@@ -225,6 +239,22 @@ export interface SpectatorVision {
     userNotes: string[];
   }>;
   centerCards: Role[];
+}
+
+// God-mode view for the host when dev mode is on. Same shape as
+// SpectatorVision plus the live action log so the host can verify what
+// bots and other roles actually did during the round.
+export interface DevVision {
+  players: Array<{
+    id: string;
+    currentRole: Role;
+    originalRole: Role;
+    notes: NightNote[];
+    userNotes: string[];
+    bot?: boolean;
+  }>;
+  centerCards: Role[];
+  actionLog: ActionLogEntry[];
 }
 
 export type NightNote =
@@ -375,6 +405,20 @@ export interface ClientToServer {
   "day:accuse": (payload: { targetId: string; role: Role | null }) => void;
   "vote:cast": (payload: { targetId: string | "no_kill" }) => void;
   "room:reset": () => void;
+
+  // Dev panel actions (host-only). The room must have devMode enabled
+  // first via dev:setMode for the others to be honoured.
+  "dev:setMode": (payload: { enabled: boolean }) => void;
+  "dev:addBots": (payload: { count: number; spectating: boolean }) => void;
+  "dev:clearBots": () => void;
+  // manualRoles is { playerId: Role } overriding the random deal. The deck
+  // (selectedRoles) is still the source for centre cards — anything not
+  // explicitly assigned goes to the centre.
+  "dev:forceStart": (payload: { manualRoles?: Record<string, Role> }) => void;
+  "dev:skipNightStep": () => void;
+  "dev:skipToPhase": (payload: { phase: Phase }) => void;
+  "dev:setSpeed": (payload: { multiplier: number }) => void;
+  "dev:forceBotVotes": (payload: { targetId: string | "no_kill" }) => void;
   // Voice chat: client tells server when it has mic access (or has stopped).
   // Server marks the player and broadcasts so peers know to negotiate.
   "audio:setReady": (payload: { ready: boolean }) => void;
