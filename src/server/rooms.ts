@@ -274,6 +274,9 @@ export class Room {
     if ((counts.minion ?? 0) > 0 && (counts.werewolf ?? 0) === 0) {
       return { ok: false, error: "Minion requires at least one Werewolf in the deck" };
     }
+    if ((counts.mason ?? 0) === 1) {
+      return { ok: false, error: "Masons come in pairs — pick 0 or 2" };
+    }
 
     // Reset shared per-game state on every player (active and spectator).
     this.players.forEach((p) => {

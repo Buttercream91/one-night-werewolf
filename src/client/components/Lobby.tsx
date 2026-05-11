@@ -47,8 +47,15 @@ export function Lobby({ room, me }: Props) {
 
   function setCount(role: Role, n: number) {
     if (!isHost) return;
+    let targetN = n;
+    // Masons only work in pairs — a lone Mason just wakes up alone and
+    // confirms they're solo, which is redundant. Either slot click flips
+    // the whole pair on/off.
+    if (role === "mason") {
+      targetN = (counts.mason ?? 0) >= 2 ? 0 : 2;
+    }
     const next = room.selectedRoles.filter((r) => r !== role);
-    for (let i = 0; i < n; i++) next.push(role);
+    for (let i = 0; i < targetN; i++) next.push(role);
     send.setRoles(next);
   }
 
@@ -715,8 +722,12 @@ function randomDeck(numPlayers: number): Role[] {
     const shuffled = shuffle(pool.slice()).slice(0, target);
     const hasMinion = shuffled.includes("minion");
     const hasWerewolf = shuffled.includes("werewolf");
-    // At least one Werewolf is mandatory; Minion needs a Werewolf too.
-    if (hasWerewolf && (!hasMinion || hasWerewolf)) return shuffled;
+    const masonCount = shuffled.filter((r) => r === "mason").length;
+    // Constraints: at least one Werewolf, Minion only if a Werewolf is in
+    // play, Masons come in pairs (0 or 2 — never lone).
+    if (hasWerewolf && (!hasMinion || hasWerewolf) && masonCount !== 1) {
+      return shuffled;
+    }
   }
   // Fallback: force a Werewolf into a fresh shuffle and drop something else.
   const fallback = shuffle(pool.slice()).slice(0, target);
