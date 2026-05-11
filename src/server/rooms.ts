@@ -485,7 +485,11 @@ export class Room {
     const dayMs = (this.daySeconds * 1000) / mult;
     this.dayEndsAt = Date.now() + dayMs;
     this.players.forEach((p) => {
-      p.ready = false;
+      // Bots auto-ready every day so the "X/Y ready" counter is accurate
+      // and the host doesn't have to click anything to roll the day along.
+      // The completion check already filters bots out, so this is purely
+      // cosmetic — but the cosmetic gap was confusing in testing.
+      p.ready = !!p.bot;
       p.vote = null;
       p.prompt = undefined;
     });
