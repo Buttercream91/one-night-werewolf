@@ -1,9 +1,12 @@
 import type { NightNote, PrivateView, PublicRoom, Role } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
+import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
+import { unlockNarrationAudio, useStepAudio } from "../nightAudio.js";
 import { playerColor } from "../playerColor.js";
+import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
 import { ActiveDeckPanel } from "./ActiveDeckPanel.js";
 import { DevModeTag } from "./DevModeTag.js";
+import { NightProgressPanel } from "./NightProgressPanel.js";
 import { RoleCard } from "./RoleCard.js";
 
 interface Props {
@@ -30,6 +33,12 @@ export function SpectatorView({ room, me }: Props) {
   // Quick lookup of the live data per active player.
   const visionById = new Map(vision?.players.map((v) => [v.id, v]));
   const visionHidden = !!room.spectatorsBlind;
+  // Spectators hear the same narrator clips as active players so they can
+  // follow along with the night flow.
+  const stepUrl = room.nightStepVoiceFile
+    ? `/voice/${loadNarrator() ?? DEFAULT_VOICE_PACK}/${room.nightStepVoiceFile}`
+    : undefined;
+  const narrationBlocked = useStepAudio(room.nightStep, stepUrl);
 
   return (
     <div className="space-y-6">
@@ -51,6 +60,14 @@ export function SpectatorView({ room, me }: Props) {
           <div className="mt-3 text-xs text-amber-300">
             🙈 Game state hidden by the host
           </div>
+        )}
+        {narrationBlocked && (
+          <button
+            onClick={() => unlockNarrationAudio()}
+            className="mt-3 btn-ghost text-xs"
+          >
+            🔊 Tap to enable narration
+          </button>
         )}
         {room.phase === "night" && (
           <div className="mt-3 text-sm text-slate-400">
@@ -79,6 +96,10 @@ export function SpectatorView({ room, me }: Props) {
           </div>
         )}
       </div>
+
+      {room.phase === "night" && (
+        <NightProgressPanel selectedRoles={room.selectedRoles} currentStep={room.nightStep} />
+      )}
 
       <ActiveDeckPanel roles={room.selectedRoles} />
 

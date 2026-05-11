@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { NightPrompt, NightStep, PrivateView, PublicRoom, Role } from "../../shared/types.js";
 import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
-import { duckMusic, unduckMusic } from "../music.js";
+import { unlockNarrationAudio, useStepAudio } from "../nightAudio.js";
 import { send } from "../socket.js";
 import { loadNarrator } from "../storage.js";
 import { useCountdown } from "../useCountdown.js";
@@ -62,7 +62,7 @@ export function NightPhase({ room, me }: Props) {
           <p className="text-lg text-indigo-200 heading">{moderatorLine(room.nightStep)}</p>
         )}
         {audioBlocked && (
-          <button onClick={() => unlockAudio()} className="mt-3 btn-ghost text-xs">
+          <button onClick={() => unlockNarrationAudio()} className="mt-3 btn-ghost text-xs">
             🔊 Tap to enable narration
           </button>
         )}
@@ -360,53 +360,3 @@ function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolea
   return originalRole === step;
 }
 
-let audioUnlocked = false;
-const audioElement: HTMLAudioElement | null = typeof Audio === "undefined" ? null : new Audio();
-if (audioElement) {
-  // Restore music volume whenever the narrator clip ends or is interrupted.
-  // We duck before .play(), so this is what brings it back.
-  audioElement.addEventListener("ended", () => unduckMusic());
-  audioElement.addEventListener("pause", () => unduckMusic());
-}
-function unlockAudio() {
-  if (!audioElement) return;
-  audioElement.muted = true;
-  const p = audioElement.play();
-  if (p) {
-    p.then(() => {
-      audioElement.pause();
-      audioElement.muted = false;
-      audioUnlocked = true;
-      window.dispatchEvent(new Event("onuw-audio-unlocked"));
-    }).catch(() => {});
-  }
-}
-function useStepAudio(step: NightStep | undefined, url: string | undefined): boolean {
-  const [blocked, setBlocked] = useState(false);
-  const lastStep = useRef<NightStep | undefined>(undefined);
-  useEffect(() => {
-    function onUnlocked() {
-      setBlocked(false);
-    }
-    window.addEventListener("onuw-audio-unlocked", onUnlocked);
-    return () => window.removeEventListener("onuw-audio-unlocked", onUnlocked);
-  }, []);
-  useEffect(() => {
-    if (!step || step === lastStep.current) return;
-    lastStep.current = step;
-    if (!url || !audioElement) return;
-    audioElement.src = url;
-    duckMusic();
-    const p = audioElement.play();
-    if (p) {
-      p.then(() => {
-        audioUnlocked = true;
-        setBlocked(false);
-      }).catch(() => {
-        unduckMusic();
-        if (!audioUnlocked) setBlocked(true);
-      });
-    }
-  }, [step, url]);
-  return blocked;
-}
