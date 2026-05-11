@@ -40,8 +40,11 @@ const CLIPS: Record<string, string> = {
     "Doppelganger, wake up and look at another player's card. You are now a copy of that role.",
   Werewolves:
     "Werewolves, wake up and look for other werewolves. If you are the only werewolf, you may look at one card from the center.",
-  Minion:
-    "Minion, wake up. Werewolves, hold out your thumbs so the minion can see you. Minion, look for the werewolves. Werewolves, put your thumbs back down.",
+  // Online play has no table to peek under, so we drop the rulebook's
+  // thumbs-up choreography and just tell the Minion the result directly.
+  // The server-side "minion sees werewolves" note is delivered the moment
+  // this clip plays, so the line lands at the same time as the info.
+  Minion: "Minion, you may now see who the werewolves are.",
   Mason: "Masons, wake up and look for other masons.",
   Seer: "Seer, wake up. You may look at another player's card, or look at two cards from the center.",
   Robber:
