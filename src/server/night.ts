@@ -113,8 +113,8 @@ export const STEP_SECONDS: Record<NightStep, number> = {
   troublemaker: 15,
   drunk: 9,
   insomniac: 7,
-  // Longer than before to fit the "...night will end in 5... 4... 3... 2... 1" line.
-  outro: 8,
+  // Fits the "...night will end in 5... 4... 3... 2... 1" line.
+  outro: 6,
 };
 
 // Action applied to actors who don't submit before their step ends.
