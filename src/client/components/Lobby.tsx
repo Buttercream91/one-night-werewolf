@@ -73,6 +73,7 @@ export function Lobby({ room, me }: Props) {
       randomDeck(activePlayers.length, {
         daybreak: !!room.daybreakEnabled,
         wolfCap: room.wolfCap ?? 3,
+        excluded: new Set(room.excludedRoles ?? []),
       }),
     );
   }
@@ -773,10 +774,13 @@ function RoleDeckPicker({
           const meta = ROLE_META[role];
           const n = counts[role] ?? 0;
           const daybreakLocked = DAYBREAK_ROLES.includes(role) && !daybreakOn;
+          const excluded = (room.excludedRoles ?? []).includes(role);
+          // Werewolf can't be excluded — it's the always-on seed.
+          const canExclude = role !== "werewolf" && !daybreakLocked;
           return (
             <li
               key={role}
-              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${daybreakLocked ? "border-slate-900 bg-slate-900/20 opacity-50" : "border-slate-800 bg-slate-900/40"}`}
+              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${daybreakLocked ? "border-slate-900 bg-slate-900/20 opacity-50" : excluded ? "border-slate-800 bg-slate-900/40 opacity-60" : "border-slate-800 bg-slate-900/40"}`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -785,6 +789,22 @@ function RoleDeckPicker({
                   {n > 0 && <span className="text-xs text-emerald-300">×{n}</span>}
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
+                {canExclude && isHost && (
+                  <label className="mt-1.5 inline-flex items-center gap-1 text-xs text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="accent-rose-500"
+                      checked={excluded}
+                      onChange={(e) => send.setRoleExcluded(role, e.target.checked)}
+                    />
+                    Exclude (Randomise + auto-add skip this role)
+                  </label>
+                )}
+                {canExclude && !isHost && excluded && (
+                  <span className="mt-1 inline-block text-xs text-rose-300">
+                    Excluded by host
+                  </span>
+                )}
               </div>
               <div className="flex gap-1.5 shrink-0">
                 {Array.from({ length: meta.maxCount }).map((_, slotIdx) => {
@@ -925,13 +945,17 @@ function DeckStatusBadge({
 // reject that combo) or violates the wolf cap.
 function randomDeck(
   numPlayers: number,
-  opts: { daybreak: boolean; wolfCap: number },
+  opts: { daybreak: boolean; wolfCap: number; excluded: Set<Role> },
 ): Role[] {
   const pool: Role[] = [];
   for (const role of ALL_ROLES) {
     // Skip Daybreak roles entirely when the expansion is off — the host
     // explicitly opted out, so randomise shouldn't surprise them.
     if (!opts.daybreak && DAYBREAK_ROLES.includes(role)) continue;
+    // Host-excluded roles never appear in the random pool either. Werewolf
+    // is the seed and must stay in play; if the host somehow excluded it,
+    // we ignore that flag for randomise (the seed is non-negotiable).
+    if (opts.excluded.has(role) && role !== "werewolf") continue;
     for (let i = 0; i < ROLE_META[role].maxCount; i++) pool.push(role);
   }
   for (let attempt = 0; attempt < 30; attempt++) {

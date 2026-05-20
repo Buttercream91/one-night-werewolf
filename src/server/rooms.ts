@@ -131,6 +131,10 @@ export class Room {
   // between 1 and 5 via the role-section menu. Hard cap is also enforced by
   // each role's ROLE_META.maxCount.
   wolfCap = 3;
+  // Roles the host has flagged "don't use this round". Randomise + the
+  // priority-list auto-add skip these. Manual selection still works (and
+  // un-excludes the role automatically — see lobby:setRoles handler).
+  excludedRoles = new Set<Role>();
   // Dev mode (host-only). Enables the dev panel's server-side actions.
   devMode = false;
   // Multiplier applied to upcoming night-step + day-phase durations. 1 by
@@ -890,6 +894,7 @@ export class Room {
     while (this.selectedRoles.length < target && safety-- > 0) {
       const role = pickNextPriorityToAdd(this.selectedRoles, {
         wolfCap: this.wolfCap,
+        excluded: this.excludedRoles,
       });
       if (!role) break;
       this.selectedRoles.push(role);
@@ -1022,6 +1027,21 @@ export class Room {
     return { ok: true };
   }
 
+  // Toggle a role's "do not use this round" flag. Excluded roles are skipped
+  // by Randomise + the priority-list auto-add. Doesn't strip the role from
+  // selectedRoles if it's already there — that's intentional, the host can
+  // pre-fill with a manual pick and then exclude future auto-additions.
+  setRoleExcluded(hostId: string, role: Role, excluded: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (this.phase !== "lobby") {
+      return { ok: false, error: "Only configurable in the lobby" };
+    }
+    if (!ROLE_META[role]) return { ok: false, error: "Unknown role" };
+    if (excluded) this.excludedRoles.add(role);
+    else this.excludedRoles.delete(role);
+    return { ok: true };
+  }
+
   // Host adjusts the maximum total wolves (Werewolf + Alpha/Mystic/Dream).
   // Clamped to 1..5; any current excess wolves are trimmed from the right.
   setWolfCap(hostId: string, cap: number): ActionResult {
@@ -1050,8 +1070,20 @@ export class Room {
 
   setDevMode(hostId: string, enabled: boolean): ActionResult {
     if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    const wasEnabled = this.devMode;
     this.devMode = enabled;
     if (!enabled) this.devSpeedMultiplier = 1;
+    // If dev mode just turned on mid-round, broadcast it to every other
+    // active player via a personal note — they should know the host can now
+    // see the table state.
+    if (enabled && !wasEnabled && this.phase !== "lobby") {
+      for (const p of this.players) {
+        if (p.id === hostId) continue;
+        if (p.spectating) continue;
+        if (!p.originalRole) continue;
+        p.notes.push({ kind: "host_enabled_dev_mode" });
+      }
+    }
     return { ok: true };
   }
 

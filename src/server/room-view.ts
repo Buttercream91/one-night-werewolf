@@ -25,6 +25,8 @@ export function toPublicRoom(room: Room): PublicRoom {
     removeCardLimit: room.removeCardLimit || undefined,
     daybreakEnabled: room.daybreakEnabled || undefined,
     wolfCap: room.wolfCap,
+    excludedRoles:
+      room.excludedRoles.size > 0 ? [...room.excludedRoles] : undefined,
     centerCardCount: room.phase !== "lobby" ? room.centerCards.length : undefined,
     devMode: room.devMode || undefined,
     devSpeedMultiplier:

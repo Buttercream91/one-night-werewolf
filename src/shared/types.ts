@@ -156,6 +156,10 @@ export interface PublicRoom {
   // deck. Default 3. Adjustable from the lobby's role-section menu so hosts
   // can dial in heavier or lighter wolf metas.
   wolfCap?: number;
+  // Roles the host has flagged "do not use this round". Randomise + the
+  // auto-add-on-join priority list skip these. Manual click in the role
+  // picker still works (and the click also un-excludes the role).
+  excludedRoles?: Role[];
   // Host has lifted the deck-size cap. With the limit removed, the deck can
   // exceed the active-player + 3 default — extras land in the centre at deal
   // time, so fewer-player games can still draw from a larger pool.
@@ -468,6 +472,9 @@ export type NightNote =
   // Minion know which "wolves" in their team list don't know they are wolves.
   // Distinct from dream_wolf_seen (which is the Dream Wolf's own self-note).
   | { kind: "dream_wolves_in_play"; playerIds: string[] }
+  // Pushed to every active non-host player when the host enables dev mode
+  // mid-round, so they know the host can now see the table.
+  | { kind: "host_enabled_dev_mode" }
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
   | { kind: "lone_wolf_center"; index: number; role: Role }
@@ -667,6 +674,9 @@ export interface ClientToServer {
   "lobby:setDaybreakEnabled": (payload: { enabled: boolean }) => void;
   // Host adjusts the max-wolves cap (1..5). Clamped server-side.
   "lobby:setWolfCap": (payload: { cap: number }) => void;
+  // Toggle a role's "excluded" flag. While excluded, the role is skipped by
+  // Randomise and by the priority-list auto-add when a player joins.
+  "lobby:setRoleExcluded": (payload: { role: Role; excluded: boolean }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
   // Host force-spectates a player (spectating=true) or releases them

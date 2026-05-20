@@ -50,6 +50,8 @@ export const send = {
   setDaybreakEnabled: (enabled: boolean) =>
     socket.emit("lobby:setDaybreakEnabled", { enabled }),
   setWolfCap: (cap: number) => socket.emit("lobby:setWolfCap", { cap }),
+  setRoleExcluded: (role: Role, excluded: boolean) =>
+    socket.emit("lobby:setRoleExcluded", { role, excluded }),
   lobbyReady: (ready: boolean) => socket.emit("lobby:ready", { ready }),
   kick: (playerId: string) => socket.emit("lobby:kick", { playerId }),
   forceSpectate: (playerId: string, spectating: boolean) =>

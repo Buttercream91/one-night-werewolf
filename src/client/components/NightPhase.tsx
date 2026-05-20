@@ -131,7 +131,11 @@ export function NightPhase({ room, me }: Props) {
           </div>
           <NotesPanel me={me} room={room} />
         </div>
-        <div className="panel flex flex-col items-center gap-3">
+        <div
+          className={`panel flex flex-col items-center gap-3 ${
+            isIntro && !iHaveFlipped ? "intro-pulse" : ""
+          }`}
+        >
           <span className="text-xs uppercase tracking-wider text-slate-400">Your card</span>
           {isIntro && !iHaveFlipped && myRole ? (
             // During intro the card is a button: tap to flip face-down and

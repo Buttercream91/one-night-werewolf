@@ -128,6 +128,13 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     // depends on it, so auto-adjust the deck to fill or trim the extra slot.
     const oldHadAlpha = room.selectedRoles.includes("alpha_wolf");
     const newHasAlpha = next.includes("alpha_wolf");
+    // Manually adding a role unchecks its excluded flag — if the host clicks
+    // a role they previously marked Exclude, they obviously want it in this
+    // round. Removing a role from the deck doesn't change exclusion (the
+    // host might want to keep it out of future auto-adds).
+    for (const role of new Set(next)) {
+      if (room.excludedRoles.has(role)) room.excludedRoles.delete(role);
+    }
     room.selectedRoles = next;
     if (oldHadAlpha !== newHasAlpha) room.autoAdjustDeck();
     room.broadcast();
@@ -187,6 +194,15 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;
     const result = room.setWolfCap(attachedPlayerId, Number(cap));
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:setRoleExcluded", ({ role, excluded }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    if (!isRole(role)) return;
+    const result = room.setRoleExcluded(attachedPlayerId, role, !!excluded);
     if (!result.ok) return socket.emit("error", { message: result.error });
     room.broadcast();
   });

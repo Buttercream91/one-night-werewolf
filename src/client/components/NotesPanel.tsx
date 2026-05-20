@@ -165,6 +165,12 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           <PlayerList ids={n.playerIds} room={room} />.
         </>
       );
+    case "host_enabled_dev_mode":
+      return (
+        <span className="text-amber-300">
+          ⚠ The host enabled dev mode — they can now see every card on the table.
+        </span>
+      );
     case "doppelganger_copied":
       return (
         <>

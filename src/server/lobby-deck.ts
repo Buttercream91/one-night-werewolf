@@ -34,15 +34,20 @@ function seedCumulative(): Partial<Record<Role, number>> {
 // priority list left-to-right and returns the first slot whose role appears
 // in the deck fewer times than its cumulative count up to that slot (seed
 // Werewolf counted). Skips wolf-team slots when the deck has already hit
-// the room's wolf cap. Returns null when every slot is already satisfied.
+// the room's wolf cap, and skips any role flagged "excluded" by the host.
+// Returns null when every slot is already satisfied.
 export function pickNextPriorityToAdd(
   deck: Role[],
-  opts: { wolfCap?: number } = {},
+  opts: { wolfCap?: number; excluded?: ReadonlySet<Role> } = {},
 ): Role | null {
   const cap = opts.wolfCap ?? 99;
+  const excluded = opts.excluded;
   const cumulative = seedCumulative();
   for (const role of PRIORITY_LIST) {
     cumulative[role] = (cumulative[role] ?? 0) + 1;
+    // Excluded roles never auto-add; cumulative still advances so the
+    // priority order downstream stays stable.
+    if (excluded?.has(role)) continue;
     const inDeck = deck.filter((r) => r === role).length;
     if (inDeck < cumulative[role]!) {
       // Defensive — PRIORITY_LIST already respects ROLE_META maxCount, but

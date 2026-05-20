@@ -256,6 +256,8 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return "Dream Wolf — stayed asleep.";
     case "dream_wolves_in_play":
       return `Dream wolves (asleep): ${n.playerIds.map(nameOf).join(", ")}.`;
+    case "host_enabled_dev_mode":
+      return "⚠ Host enabled dev mode mid-game.";
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":
