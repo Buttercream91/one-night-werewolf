@@ -22,7 +22,38 @@ type PeerEntry = {
   manualMuted: boolean;
   // Set by applyAudioMask. Final element.muted = manualMuted || maskMuted.
   maskMuted: boolean;
+  // Remote peer's hasMic at the time we created this PC. If the next
+  // room:state shows it changed, this PC is stale — we destroy + rebuild
+  // so both sides re-add their tracks at PC creation time. This is what
+  // makes the rebuild deterministic without renegotiation.
+  remoteHasMic: boolean;
+  // Local mic state at the time we created this PC. Same idea — if our
+  // own micEnabledState changed since we built this peer, the tracks on
+  // the PC are stale and the peer needs to be rebuilt from our side.
+  localHadMic: boolean;
 };
+
+// ICE candidates received before the matching remote description is set
+// are buffered per peer and applied after setRemoteDescription succeeds.
+// Without this, racy ICE delivery (very common when an offer + ICE land in
+// the same tick) silently fails and STUN has to retry, adding tens of
+// seconds of delay before the connection comes up.
+const pendingIce = new Map<string, RTCIceCandidateInit[]>();
+
+async function drainPendingIce(peerId: string) {
+  const buf = pendingIce.get(peerId);
+  if (!buf || buf.length === 0) return;
+  pendingIce.delete(peerId);
+  const e = peers.get(peerId);
+  if (!e) return;
+  for (const c of buf) {
+    try {
+      await e.pc.addIceCandidate(c);
+    } catch {
+      // Candidate may be too stale or already known — harmless.
+    }
+  }
+}
 
 // Last room state seen by syncPeers. Cached so mic enable/disable can call
 // syncPeers directly to immediately rebuild peer connections, rather than
@@ -130,7 +161,11 @@ function notify() {
   for (const fn of listeners) fn();
 }
 
-function getOrCreatePeer(peerId: string): PeerEntry {
+// Build (or return the existing) PC + audio element pair for this peer.
+// remoteHasMic is the peer's hasMic state we're building against — stored
+// on the entry so the next syncPeers can detect a change and rebuild
+// without trying to renegotiate the existing PC.
+function getOrCreatePeer(peerId: string, remoteHasMic: boolean): PeerEntry {
   const existing = peers.get(peerId);
   if (existing) return existing;
 
@@ -148,11 +183,12 @@ function getOrCreatePeer(peerId: string): PeerEntry {
   // a recvonly audio transceiver so the SDP carries an audio m-line — peer's
   // tracks need somewhere to flow even if we're listen-only.
   //
-  // We re-create connections when the local mic toggles (rather than mutating
-  // an existing one with replaceTrack) because replaceTrack-without-
-  // renegotiation has been unreliable in practice on some browsers, especially
-  // on Android Chrome. A fresh peer with the right track set at creation time
-  // is the most predictable path.
+  // We re-create connections when EITHER side's mic toggles (rather than
+  // mutating an existing one with replaceTrack) because replaceTrack-without-
+  // renegotiation has been unreliable in practice on some browsers,
+  // especially on Android Chrome. A fresh peer with the right track set at
+  // creation time is the most predictable path — and both sides detecting
+  // the mic change and rebuilding in lockstep is what keeps it deterministic.
   if (localStream) {
     for (const track of localStream.getAudioTracks()) {
       pc.addTrack(track, localStream);
@@ -167,6 +203,8 @@ function getOrCreatePeer(peerId: string): PeerEntry {
     manualVolume: 1,
     manualMuted: false,
     maskMuted: false,
+    remoteHasMic,
+    localHadMic: micEnabledState,
   };
   peers.set(peerId, entry);
 
@@ -202,6 +240,13 @@ function getOrCreatePeer(peerId: string): PeerEntry {
   return entry;
 }
 
+// Returns the latest hasMic value we've seen for peerId, default false.
+function remoteHasMicFromLastRoom(peerId: string): boolean {
+  if (!lastRoom) return false;
+  const p = lastRoom.players.find((q) => q.id === peerId);
+  return !!p?.hasMic;
+}
+
 function destroyPeer(peerId: string) {
   const e = peers.get(peerId);
   if (!e) return;
@@ -213,6 +258,9 @@ function destroyPeer(peerId: string) {
     e.audioEl.remove();
   }
   peers.delete(peerId);
+  // Drop any pending ICE that hadn't been applied yet — they belong to the
+  // PC we just destroyed.
+  pendingIce.delete(peerId);
   stopAnalyzer(peerId);
   notify();
 }
@@ -235,7 +283,19 @@ export function setMyPlayerId(id: string | null) {
   myPlayerId = id;
 }
 
-export async function startMic(): Promise<{ ok: true } | { ok: false; error: string }> {
+// Dedupe concurrent startMic calls — a rapid double-click would otherwise
+// fire two getUserMedia requests and orphan the first stream.
+let startMicInFlight: Promise<{ ok: true } | { ok: false; error: string }> | null = null;
+export function startMic(): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (localStream) return Promise.resolve({ ok: true });
+  if (startMicInFlight) return startMicInFlight;
+  startMicInFlight = startMicInner().finally(() => {
+    startMicInFlight = null;
+  });
+  return startMicInFlight;
+}
+
+async function startMicInner(): Promise<{ ok: true } | { ok: false; error: string }> {
   if (localStream) return { ok: true };
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return { ok: false, error: "Voice chat isn't supported in this browser" };
@@ -292,12 +352,12 @@ export function syncPeers(room: PublicRoom): void {
   if (!myPlayerId) return;
   lastRoom = room;
 
-  const wanted = new Set<string>();
+  const wanted = new Map<string, boolean>(); // peerId → their hasMic
   for (const p of room.players) {
     if (p.id === myPlayerId) continue;
     if (!p.connected) continue;
     if (!p.hasMic && !micEnabledState) continue;
-    wanted.add(p.id);
+    wanted.set(p.id, !!p.hasMic);
   }
 
   // Drop peers who shouldn't be connected anymore.
@@ -305,11 +365,27 @@ export function syncPeers(room: PublicRoom): void {
     if (!wanted.has(peerId)) destroyPeer(peerId);
   }
 
-  // Initiate connections for new peers (deterministic — the lower playerId
-  // sends the offer, avoids glare).
-  for (const peerId of wanted) {
+  // Detect mic-state mismatches against the current room. A peer whose
+  // hasMic changed since this PC was built is stale — the side that just
+  // toggled mic needs its tracks re-added at PC creation time, and the
+  // other side needs to handle the incoming fresh offer without trying to
+  // renegotiate the old PC. Easiest: destroy and rebuild both sides
+  // in lockstep, which we do by having both sides notice the broadcast
+  // change and react identically. Same logic for our OWN mic state if we
+  // built the peer when we had a different micEnabledState.
+  for (const [peerId, hasMic] of wanted) {
+    const e = peers.get(peerId);
+    if (!e) continue;
+    if (e.remoteHasMic !== hasMic || e.localHadMic !== micEnabledState) {
+      destroyPeer(peerId);
+    }
+  }
+
+  // Initiate connections for new (or just-destroyed) peers. Deterministic:
+  // the lower playerId sends the offer to avoid glare.
+  for (const [peerId, hasMic] of wanted) {
     if (peers.has(peerId)) continue;
-    const e = getOrCreatePeer(peerId);
+    const e = getOrCreatePeer(peerId, hasMic);
     if (myPlayerId < peerId) {
       // We're the initiator.
       void initiateOffer(peerId, e);
@@ -422,11 +498,18 @@ export function setPeerMuted(peerId: string, m: boolean) {
 // ---- Signaling event handlers (wired from App on socket connect) ----
 
 export async function handleOffer(from: string, sdp: RTCSessionDescriptionInit) {
-  // Accept incoming offers even without local mic — listen-only is allowed
-  // and the peer's offer carries the tracks we want to play.
-  const e = getOrCreatePeer(from);
+  // An incoming offer is always treated as a fresh negotiation. If we
+  // already have a PC to `from` (e.g. listen-only from earlier, now they've
+  // enabled mic and re-initiated), tear it down so the new offer hits a
+  // clean PC rather than racing setRemoteDescription on a stale one.
+  if (peers.has(from)) destroyPeer(from);
+  // We need to know whether the remote side has mic — we get this from
+  // the latest room state we've cached. Listen-only joiners send offers
+  // too (their hasMic stays false), so we record that.
+  const e = getOrCreatePeer(from, remoteHasMicFromLastRoom(from));
   try {
     await e.pc.setRemoteDescription(sdp);
+    await drainPendingIce(from);
     const answer = await e.pc.createAnswer();
     await e.pc.setLocalDescription(answer);
     socket.emit("webrtc:answer", { target: from, sdp: answer });
@@ -440,6 +523,7 @@ export async function handleAnswer(from: string, sdp: RTCSessionDescriptionInit)
   if (!e) return;
   try {
     await e.pc.setRemoteDescription(sdp);
+    await drainPendingIce(from);
   } catch {
     destroyPeer(from);
   }
@@ -447,7 +531,16 @@ export async function handleAnswer(from: string, sdp: RTCSessionDescriptionInit)
 
 export async function handleIce(from: string, candidate: RTCIceCandidateInit) {
   const e = peers.get(from);
-  if (!e) return;
+  // If the peer doesn't exist yet, or its remote description hasn't been
+  // set, buffer the candidate. Without this, ICE arriving in the same tick
+  // as the offer/answer is silently dropped, and STUN has to retry — which
+  // can stretch the connection setup time by tens of seconds.
+  if (!e || !e.pc.remoteDescription) {
+    const buf = pendingIce.get(from) ?? [];
+    buf.push(candidate);
+    pendingIce.set(from, buf);
+    return;
+  }
   try {
     await e.pc.addIceCandidate(candidate);
   } catch {
