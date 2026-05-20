@@ -230,6 +230,27 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
           <RoleChip role="village_idiot" />) didn't rotate.
         </>
       );
+    case "revealer_revealed":
+      return e.publicReveal ? (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="revealer" />)
+          flipped <PlayerChip id={e.targetId} room={room} /> face up — publicly
+          revealed as <RoleChip role={e.role} />.
+        </>
+      ) : (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="revealer" />)
+          flipped <PlayerChip id={e.targetId} room={room} /> — <RoleChip role={e.role} />
+          , card stayed face down (wolf/tanner team).
+        </>
+      );
+    case "revealer_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="revealer" />)
+          chose not to flip.
+        </>
+      );
     case "doppelganger_copied":
       return (
         <>

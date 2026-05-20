@@ -138,24 +138,52 @@ function DayPlayerTile({
         player.connected ? "border-slate-700 bg-slate-800" : "border-slate-800 bg-slate-900"
       } ${ring}`}
     >
-      <div className="flex items-center justify-between gap-1">
-        <span className={`font-medium ${nameCls}`}>
-          {player.name}
-          <DevModeTag show={!!room.devMode && player.isHost} />
-          {(room.shieldedPlayerIds ?? []).includes(player.id) && (
-            <span
-              className="ml-1 text-sky-300"
-              title="Shielded by the Sentinel — their card couldn't be touched at night"
-            >
-              🛡
-            </span>
-          )}
-        </span>
-        <div className="flex items-center gap-1">
-          {ready && <span className="text-xs text-emerald-300">ready</span>}
-          <PlayerMenu target={player} room={room} myId={me.myId} where="game" />
-        </div>
-      </div>
+      {(() => {
+        const reveal = (room.publiclyRevealedRoles ?? []).find(
+          (r) => r.playerId === player.id,
+        );
+        return (
+          <>
+            <div className="flex items-center justify-between gap-1">
+              <span className={`font-medium ${nameCls}`}>
+                {player.name}
+                <DevModeTag show={!!room.devMode && player.isHost} />
+                {(room.shieldedPlayerIds ?? []).includes(player.id) && (
+                  <span
+                    className="ml-1 text-sky-300"
+                    title="Shielded by the Sentinel — their card couldn't be touched at night"
+                  >
+                    🛡
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-1">
+                {ready && <span className="text-xs text-emerald-300">ready</span>}
+                <PlayerMenu target={player} room={room} myId={me.myId} where="game" />
+              </div>
+            </div>
+            {reveal && (
+              <div
+                className="mt-1.5 inline-flex items-center gap-1 text-xs"
+                title="Publicly revealed by the Revealer last night"
+              >
+                <span className="text-slate-400">Revealed:</span>
+                <span
+                  className={`rounded border px-1.5 py-0 text-[0.7rem] font-medium ${
+                    ROLE_META[reveal.role].team === "werewolf"
+                      ? "bg-rose-950 border-rose-800 text-rose-200"
+                      : ROLE_META[reveal.role].team === "tanner"
+                        ? "bg-amber-950 border-amber-800 text-amber-200"
+                        : "bg-emerald-950 border-emerald-800 text-emerald-200"
+                  }`}
+                >
+                  {ROLE_META[reveal.role].label}
+                </span>
+              </div>
+            )}
+          </>
+        );
+      })()}
       {accusationsAgainst.length > 0 && (
         <ul className="mt-1.5 space-y-0.5">
           {accusationsAgainst.map((a) => {

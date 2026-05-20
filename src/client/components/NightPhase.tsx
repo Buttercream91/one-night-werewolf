@@ -273,6 +273,9 @@ function ActionForm({
             affectedIds={prompt.affectedPlayerIds}
           />
         )}
+        {prompt.kind === "revealer_choose" && (
+          <RevealerControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
+        )}
       </div>
     </div>
   );
@@ -356,6 +359,42 @@ function AlphaWolfControls({
       <button
         className="btn-ghost"
         onClick={() => send.nightAction({ kind: "alpha_wolf_swap", targetId: null })}
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
+function RevealerControls({
+  room,
+  eligibleIds,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be flipped" : undefined}
+            onClick={() => send.nightAction({ kind: "revealer_flip", targetId: p.id })}
+          >
+            Flip {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
+      <button
+        className="btn-ghost"
+        onClick={() => send.nightAction({ kind: "revealer_flip", targetId: null })}
       >
         Skip
       </button>

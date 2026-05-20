@@ -70,6 +70,13 @@ export function toPublicRoom(room: Room): PublicRoom {
         : undefined,
     horizontalCenterIndex:
       room.phase !== "lobby" ? room.horizontalCenterIndex : undefined,
+    publiclyRevealedRoles:
+      room.phase !== "lobby" && room.publiclyRevealedRoles.size > 0
+        ? [...room.publiclyRevealedRoles.entries()].map(([playerId, role]) => ({
+            playerId,
+            role,
+          }))
+        : undefined,
     dayEndsAt: room.dayEndsAt,
     daySeconds: room.daySeconds,
     voteEndsAt: room.voteEndsAt,

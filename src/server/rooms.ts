@@ -163,6 +163,10 @@ export class Room {
   // action checks this set before touching the target. Cleared at game
   // start and at reset.
   shieldedPlayerIds = new Set<string>();
+  // Daybreak — public reveals from the Revealer's step. Map of playerId →
+  // frozen role at reveal time. The card stays face-up on that player's
+  // tile from the day phase onward, visible to every client.
+  publiclyRevealedRoles = new Map<string, Role>();
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
   voteEndsAt?: number;
@@ -443,6 +447,7 @@ export class Room {
     this.actionLog = [];
     this.accusations = [];
     this.shieldedPlayerIds.clear();
+    this.publiclyRevealedRoles.clear();
     this.chatMessages = []; // start the new round's chat fresh
 
     this.phase = "night";
@@ -486,6 +491,7 @@ export class Room {
     this.actionLog = [];
     this.accusations = [];
     this.shieldedPlayerIds.clear();
+    this.publiclyRevealedRoles.clear();
     if (this.dayTimer) {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;

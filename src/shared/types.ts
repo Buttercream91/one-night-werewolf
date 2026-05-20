@@ -194,6 +194,11 @@ export interface PublicRoom {
   // "centre Werewolf card" the Alpha Wolf swaps. undefined when no Alpha
   // Wolf is in the deck.
   horizontalCenterIndex?: number;
+  // Daybreak — Revealer's published reveals. Card stays face-up on the
+  // affected player's tile for the rest of the round. Frozen role (set at
+  // reveal time) so later artifact-driven team changes don't rewrite what
+  // the table publicly saw.
+  publiclyRevealedRoles?: Array<{ playerId: string; role: Role }>;
   // Filenames under /voice/<pack>/ to play in sequence at the start of this
   // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
   // the server assembles multiple clips so the narrator can name only the
@@ -262,6 +267,14 @@ export type ActionLogEntry =
       direction: "left" | "right";
     }
   | { kind: "village_idiot_skipped"; actorId: string }
+  | {
+      kind: "revealer_revealed";
+      actorId: string;
+      targetId: string;
+      role: Role;
+      publicReveal: boolean;
+    }
+  | { kind: "revealer_skipped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -464,6 +477,13 @@ export type NightNote =
       playerIds: string[];
       direction: "left" | "right";
     }
+  // Daybreak — Revealer's private record of a flip that stayed hidden
+  // (target was on the wolf or tanner team). Only the Revealer sees this.
+  | { kind: "revealer_saw_hidden"; targetId: string; role: Role }
+  // Daybreak — broadcast to every active player when the Revealer flips a
+  // villager-team card face up. The reveal is public + permanent for the
+  // rest of the round.
+  | { kind: "revealer_revealed_public"; targetId: string; role: Role }
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
@@ -541,6 +561,12 @@ export type NightPrompt =
       message: string;
       affectedPlayerIds: string[];
     }
+  // Daybreak — Revealer picks a non-self player to flip face-up.
+  | {
+      kind: "revealer_choose";
+      message: string;
+      eligiblePlayerIds: string[];
+    }
   // Daybreak — Paranormal Investigator. picksRemaining is 2 on the first
   // prompt, 1 after a villager-team peek. Drops out as soon as the PI views
   // a non-villager-team role (they become that team) or picks Stop.
@@ -588,7 +614,9 @@ export type NightAction =
   | { kind: "witch_swap"; targetId: string }
   // Daybreak — Village Idiot rotates every non-self, non-shielded player's
   // card one seat left or right. direction: null skips the whole step.
-  | { kind: "village_idiot_rotate"; direction: "left" | "right" | null };
+  | { kind: "village_idiot_rotate"; direction: "left" | "right" | null }
+  // Daybreak — Revealer flips another player's card face-up. Null = skip.
+  | { kind: "revealer_flip"; targetId: string | null };
 
 export interface ChatMessage {
   id: string;

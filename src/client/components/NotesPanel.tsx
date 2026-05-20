@@ -186,6 +186,21 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           ⚠ The host enabled dev mode — they can now see every card on the table.
         </span>
       );
+    case "revealer_saw_hidden":
+      return (
+        <>
+          You flipped <PlayerChip id={n.targetId} room={room} /> — they're{" "}
+          <RoleChip role={n.role} /> (wolf/tanner team, card stayed hidden to
+          everyone else).
+        </>
+      );
+    case "revealer_revealed_public":
+      return (
+        <>
+          <PlayerChip id={n.targetId} room={room} /> was publicly revealed as{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
     case "doppelganger_copied":
       return (
         <>

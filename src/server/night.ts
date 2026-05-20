@@ -294,6 +294,8 @@ export function defaultActionFor(
       return { kind: "witch_peek_center", centerIndex: null };
     case "village_idiot":
       return { kind: "village_idiot_rotate", direction: null };
+    case "revealer":
+      return { kind: "revealer_flip", targetId: null };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
@@ -302,7 +304,6 @@ export function defaultActionFor(
     // Daybreak roles that don't have logic wired yet — fall through to ack
     // so endNightStep doesn't crash on the auto-default. Each will get a
     // dedicated case in its phase.
-    case "revealer":
     case "curator":
     case "doppelganger_insomniac":
     case "doppelganger_revealer":
@@ -649,6 +650,21 @@ export function setupNightStep(room: Room, step: NightStep) {
             "You are the Drunk. Swap your card with one of the center cards (you will not see it).",
         };
         room.nightPendingActors.add(d.id);
+      }
+      return;
+    }
+    case "revealer": {
+      for (const r of actors) {
+        const eligible = room.players
+          .filter((p) => p.id !== r.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        r.prompt = {
+          kind: "revealer_choose",
+          message:
+            "You are the Revealer. You may flip another player's card face up. If it's on the wolf or tanner team, it flips back face down.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(r.id);
       }
       return;
     }
@@ -1078,6 +1094,64 @@ export function applyNightAction(
         centerIndex,
         peekedRole,
         targetId: target.id,
+      });
+      return { ok: true };
+    }
+    case "revealer_flip": {
+      if (step !== "revealer" || original !== "revealer") {
+        return { ok: false, error: "Not revealer step" };
+      }
+      if (action.targetId === null) {
+        room.actionLog.push({ kind: "revealer_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      const role = room.currentRoleOf(target.id);
+      // Daybreak rule: only villager-team cards stay face-up. Wolf-team and
+      // Tanner cards flip back face-down — the Revealer learns the role
+      // privately but the rest of the table sees nothing.
+      const nonVillagerTeam: Role[] = [
+        "werewolf",
+        "alpha_wolf",
+        "mystic_wolf",
+        "dream_wolf",
+        "minion",
+        "tanner",
+      ];
+      const publicReveal = !nonVillagerTeam.includes(role);
+      if (publicReveal) {
+        room.publiclyRevealedRoles.set(target.id, role);
+        // Broadcast the reveal to every active player so it shows in their
+        // notes panel too (per the user's "the note should go to everyone").
+        for (const p of room.players) {
+          if (p.spectating) continue;
+          if (!p.originalRole) continue;
+          p.notes.push({
+            kind: "revealer_revealed_public",
+            targetId: target.id,
+            role,
+          });
+        }
+      } else {
+        // Wolf or Tanner — Revealer keeps the secret.
+        player.notes.push({
+          kind: "revealer_saw_hidden",
+          targetId: target.id,
+          role,
+        });
+      }
+      room.actionLog.push({
+        kind: "revealer_revealed",
+        actorId: player.id,
+        targetId: target.id,
+        role,
+        publicReveal,
       });
       return { ok: true };
     }
