@@ -106,6 +106,25 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
       );
     case "sentinel_skipped":
       return <>You skipped the shield.</>;
+    case "alpha_wolf_swapped":
+      return (
+        <>
+          You moved the centre Werewolf (#{n.centerIndex + 1}) into{" "}
+          <PlayerChip id={n.targetId} room={room} />'s hand. You didn't see
+          their old card.
+        </>
+      );
+    case "alpha_wolf_no_swap":
+      return <>No Werewolf card was in the centre — no swap to make.</>;
+    case "mystic_wolf_saw":
+      return (
+        <>
+          <PlayerChip id={n.targetId} room={room} />'s card is{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
+    case "dream_wolf_seen":
+      return <>You stayed asleep — the wolves can see you.</>;
     case "doppelganger_copied":
       return (
         <>

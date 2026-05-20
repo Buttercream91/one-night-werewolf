@@ -40,21 +40,73 @@ const STEP_FILE: Record<NightStep, string | null> = {
   outro: "Outro.mp3",
 };
 
-// Roles eligible for the doppelganger_act step, in the order the narrator
-// reads them. Matches the rulebook night order for those four roles.
-const DG_ACT_ROLES = ["seer", "robber", "troublemaker", "drunk"] as const;
+// Roles a Doppelganger acts as IMMEDIATELY in the doppelganger_act step
+// (rather than later in the role's own call). Order matches the narrator's
+// reading order for the dynamic audio sequence. The base game roles are
+// listed first to preserve compatibility; the Daybreak additions are appended
+// in their relative night-order positions.
+const DG_ACT_ROLES = [
+  "sentinel",
+  "seer",
+  "apprentice_seer",
+  "paranormal_investigator",
+  "robber",
+  "witch",
+  "troublemaker",
+  "village_idiot",
+  "drunk",
+  // Wolf-family Daybreak roles whose action happens immediately on copy.
+  // The DG also wakes with the wolves later (concurrent pattern) so they
+  // get the fellow-wolves note too — that's handled in the werewolves step.
+  "alpha_wolf",
+  "mystic_wolf",
+] as const;
 type DgActRole = (typeof DG_ACT_ROLES)[number];
 
 function isDgActRole(role: Role | undefined): role is DgActRole {
   return (DG_ACT_ROLES as readonly Role[]).includes(role as Role);
 }
 
-const DG_ACT_ROLE_CLIP: Record<DgActRole, string> = {
+// Only Seer/Robber/Troublemaker/Drunk have narration clips for the dynamic
+// doppelganger_act sequence (the original base-game four). Daybreak DG-act
+// roles get the action wired up but reuse the existing narration. We can
+// add per-role clips later if it's worth the voice budget.
+const DG_ACT_ROLE_CLIP: Partial<Record<DgActRole, string>> = {
   seer: "Doppelganger_Act_Seer.mp3",
   robber: "Doppelganger_Act_Robber.mp3",
   troublemaker: "Doppelganger_Act_Troublemaker.mp3",
   drunk: "Doppelganger_Act_Drunk.mp3",
 };
+
+// Awake wolves wake during the werewolves step — original Werewolf, Alpha
+// Wolf, Mystic Wolf, plus DG copies of any of those. Dream Wolves are wolves
+// for team purposes but they don't actually wake (their card stays in play
+// and the other wolves are told they exist).
+function isAwakeWolf(p: ServerPlayer): boolean {
+  if (!p.originalRole) return false;
+  const role = p.originalRole;
+  if (role === "werewolf" || role === "alpha_wolf" || role === "mystic_wolf") return true;
+  if (role === "doppelganger" && p.doppelgangerCopied) {
+    const c = p.doppelgangerCopied;
+    return c === "werewolf" || c === "alpha_wolf" || c === "mystic_wolf";
+  }
+  return false;
+}
+
+// Dream Wolf or DG-as-Dream-Wolf. They appear to the awake wolves and the
+// Minion but never wake themselves.
+function isDreamWolfRole(p: ServerPlayer): boolean {
+  if (p.originalRole === "dream_wolf") return true;
+  if (p.originalRole === "doppelganger" && p.doppelgangerCopied === "dream_wolf") return true;
+  return false;
+}
+
+// Every player on the wolf team for visibility purposes (awake + dream).
+// Used by the Werewolves step to assemble the "fellow wolves" note and by
+// the Minion step to show every wolf the Minion is helping.
+function allWolves(room: Room): ServerPlayer[] {
+  return room.players.filter((p) => isAwakeWolf(p) || isDreamWolfRole(p));
+}
 
 // Returns the ordered list of voice clips to play at the start of a step. The
 // list is normally a single-element array; doppelganger_act assembles a
@@ -66,7 +118,12 @@ const DG_ACT_ROLE_CLIP: Record<DgActRole, string> = {
 // step that runs has a clip).
 export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
   if (step === "doppelganger_act") {
-    const active = DG_ACT_ROLES.filter((r) => selectedRoles.includes(r));
+    // Only the four base-game DG-act roles have dedicated narration clips
+    // — the Daybreak roles share the suffix. Filter to those with clips so
+    // the sequence stays grammatical (Prefix + name(s) + Suffix).
+    const active = DG_ACT_ROLES.filter(
+      (r) => selectedRoles.includes(r) && DG_ACT_ROLE_CLIP[r],
+    );
     if (active.length === 0) return []; // step gets skipped via isStepInPlay
     const out = ["Doppelganger_Act_Prefix.mp3"];
     active.forEach((r, i) => {
@@ -74,7 +131,8 @@ export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
       if (i === active.length - 1 && active.length >= 2) {
         out.push("Doppelganger_Act_Or.mp3");
       }
-      out.push(DG_ACT_ROLE_CLIP[r]);
+      const clip = DG_ACT_ROLE_CLIP[r];
+      if (clip) out.push(clip);
     });
     out.push("Doppelganger_Act_Suffix.mp3");
     return out;
@@ -224,6 +282,13 @@ export function defaultActionFor(
     case "sentinel":
       // No fallback target — the Sentinel can always skip the shield.
       return { kind: "sentinel_shield", targetId: null };
+    case "alpha_wolf":
+      // Alpha Wolf must swap if possible, but the action itself handles the
+      // no-centre-Werewolf case by recording a no_swap entry. The default
+      // here just skips (engine treats this as the same outcome).
+      return { kind: "alpha_wolf_swap", targetId: null };
+    case "mystic_wolf":
+      return { kind: "mystic_wolf_view", targetId: null };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
@@ -232,8 +297,6 @@ export function defaultActionFor(
     // Daybreak roles that don't have logic wired yet — fall through to ack
     // so endNightStep doesn't crash on the auto-default. Each will get a
     // dedicated case in its phase.
-    case "alpha_wolf":
-    case "mystic_wolf":
     case "apprentice_seer":
     case "paranormal_investigator":
     case "witch":
@@ -312,29 +375,106 @@ export function setupNightStep(room: Room, step: NightStep) {
       return;
     }
     case "werewolves": {
-      if (actors.length >= 2) {
-        room.actionLog.push({
-          kind: "werewolves_revealed",
-          actorIds: actors.map((a) => a.id),
-        });
-        for (const w of actors) {
-          const others = actors.filter((o) => o.id !== w.id).map((o) => o.id);
-          w.notes.push({ kind: "fellow_werewolves", playerIds: others });
-          w.prompt = ack("You are a Werewolf. The other werewolf is in your team list.");
-          room.nightPendingActors.add(w.id);
+      // Awake wolves are this step's `actors`; dream wolves are wolves for
+      // visibility purposes but don't wake. Both contribute to the "wolves
+      // in play" count used for the lone-wolf-peek check.
+      const dreamWolves = room.players.filter((p) => isDreamWolfRole(p));
+      const all = [...actors, ...dreamWolves];
+      // Reveal-time log lists every wolf, including dream wolves, so the
+      // table can reconstruct the wolf-team membership during the recap.
+      room.actionLog.push({
+        kind: "werewolves_revealed",
+        actorIds: all.map((a) => a.id),
+      });
+      const isOnlyOneWolf = all.length === 1;
+      for (const w of actors) {
+        const others = all.filter((o) => o.id !== w.id).map((o) => o.id);
+        w.notes.push({ kind: "fellow_werewolves", playerIds: others });
+        // Lone-wolf centre peek only applies to a real Werewolf (or DG copy
+        // of one). Alpha / Mystic Wolves don't get the peek per the rules,
+        // and a Dream Wolf in play removes lone status entirely (the user
+        // confirmed this — the awake wolf "knows" the dream wolf is out
+        // there). So this branch only fires when the deck has exactly one
+        // wolf-family card and it's a Werewolf.
+        const isWerewolfRole =
+          w.originalRole === "werewolf" ||
+          (w.originalRole === "doppelganger" &&
+            w.doppelgangerCopied === "werewolf");
+        if (isOnlyOneWolf && isWerewolfRole) {
+          w.prompt = {
+            kind: "werewolf_lone",
+            message:
+              "You are the lone Werewolf. You may peek at one center card.",
+          };
+        } else {
+          w.prompt = ack(
+            "You see the rest of the wolf pack in your team list.",
+          );
         }
-      } else {
-        const w = actors[0];
-        w.prompt = {
-          kind: "werewolf_lone",
-          message: "You are the lone Werewolf. You may peek at one center card.",
-        };
         room.nightPendingActors.add(w.id);
+      }
+      // Dream Wolves get a confirmation note but no prompt — they stay asleep.
+      for (const dw of dreamWolves) {
+        dw.notes.push({ kind: "dream_wolf_seen" });
+      }
+      return;
+    }
+    case "alpha_wolf": {
+      // Centre Werewolf cards available to swap. Per the rule we don't pick
+      // a specific one — the action takes the first one found; if multiple
+      // Werewolves are in the centre, this swaps the first.
+      const centerWolfIdx = room.centerCards.findIndex((c) => c === "werewolf");
+      // Eligible target: any non-self, non-spectator, non-shielded player
+      // whose effective wolf-team membership is false — Alpha Wolf shouldn't
+      // hand a Werewolf card to another wolf.
+      const eligible = room.players
+        .filter(
+          (p) =>
+            !p.spectating &&
+            !!p.originalRole &&
+            !isAwakeWolf(p) &&
+            !isDreamWolfRole(p) &&
+            !room.shieldedPlayerIds.has(p.id),
+        )
+        .map((p) => p.id);
+      for (const a of actors) {
+        a.prompt = {
+          kind: "alpha_wolf_choose",
+          message:
+            centerWolfIdx >= 0
+              ? "You are the Alpha Wolf. Swap the centre Werewolf card with any non-wolf player's card."
+              : "You are the Alpha Wolf. No Werewolf card is in the centre — you may only skip.",
+          eligiblePlayerIds: eligible,
+          hasCenterWolf: centerWolfIdx >= 0,
+        };
+        room.nightPendingActors.add(a.id);
+      }
+      return;
+    }
+    case "mystic_wolf": {
+      for (const m of actors) {
+        const eligible = room.players
+          .filter(
+            (p) =>
+              p.id !== m.id &&
+              !p.spectating &&
+              !!p.originalRole &&
+              !room.shieldedPlayerIds.has(p.id),
+          )
+          .map((p) => p.id);
+        m.prompt = {
+          kind: "mystic_wolf_choose",
+          message: "You are the Mystic Wolf. You may look at one other player's card.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(m.id);
       }
       return;
     }
     case "minion": {
-      const wolves = effectiveActorsForRole(room, "werewolf").map((p) => p.id);
+      // Daybreak: the Minion sees EVERY wolf (Werewolf/Alpha/Mystic/Dream and
+      // DG copies of any), not just real Werewolves.
+      const wolves = allWolves(room).map((p) => p.id);
       for (const m of actors) {
         m.notes.push({ kind: "minion_sees_werewolves", playerIds: wolves });
         m.prompt = ack(
@@ -560,6 +700,72 @@ export function applyNightAction(
       return { ok: true };
     }
 
+    case "alpha_wolf_swap": {
+      if (!canActAs(player, "alpha_wolf", step)) {
+        return { ok: false, error: "Not alpha wolf step" };
+      }
+      if (action.targetId === null) {
+        player.notes.push({ kind: "alpha_wolf_no_swap" });
+        room.actionLog.push({ kind: "alpha_wolf_no_swap", actorId: player.id });
+        return { ok: true };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      // Find a centre Werewolf to swap. If none exists at action time the
+      // step still resolves cleanly — treated like no_swap.
+      const centerIndex = room.centerCards.findIndex((c) => c === "werewolf");
+      if (centerIndex < 0) {
+        player.notes.push({ kind: "alpha_wolf_no_swap" });
+        room.actionLog.push({ kind: "alpha_wolf_no_swap", actorId: player.id });
+        return { ok: true };
+      }
+      // Alpha Wolf swap: centre[idx] (Werewolf) goes to target's hand;
+      // target's old role goes to centre[idx]. Alpha Wolf sees neither card.
+      room.swapPlayerWithCenter(target.id, centerIndex);
+      player.notes.push({
+        kind: "alpha_wolf_swapped",
+        targetId: target.id,
+        centerIndex,
+      });
+      room.actionLog.push({
+        kind: "alpha_wolf_swapped",
+        actorId: player.id,
+        targetId: target.id,
+        centerIndex,
+      });
+      return { ok: true };
+    }
+    case "mystic_wolf_view": {
+      if (!canActAs(player, "mystic_wolf", step)) {
+        return { ok: false, error: "Not mystic wolf step" };
+      }
+      if (action.targetId === null) {
+        room.actionLog.push({ kind: "mystic_wolf_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      const role = room.currentRoleOf(target.id);
+      player.notes.push({ kind: "mystic_wolf_saw", targetId: target.id, role });
+      room.actionLog.push({
+        kind: "mystic_wolf_saw",
+        actorId: player.id,
+        targetId: target.id,
+        role,
+      });
+      return { ok: true };
+    }
+
     case "seer_skip": {
       if (!canActAs(player, "seer", step)) return { ok: false, error: "Not seer step" };
       room.actionLog.push({ kind: "seer_skipped", actorId: player.id });
@@ -751,8 +957,14 @@ function effectiveActorsForStep(room: Room, step: NightStep): ServerPlayer[] {
         isDgActRole(p.doppelgangerCopied),
     );
   }
+  // Werewolves step: all awake wolves (Werewolf/Alpha/Mystic + DG copies of
+  // any of those). Dream Wolves are wolves but don't wake — they're handled
+  // separately in setupNightStep so they appear in fellow-wolves notes.
+  if (step === "werewolves") {
+    return room.players.filter((p) => isAwakeWolf(p));
+  }
   const role: Role =
-    step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
+    step === "masons" ? "mason" : (step as Role);
   return effectiveActorsForRole(room, role);
 }
 

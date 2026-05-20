@@ -236,6 +236,14 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return `Shielded ${nameOf(n.targetId)}.`;
     case "sentinel_skipped":
       return "Skipped the shield.";
+    case "alpha_wolf_swapped":
+      return `Gave the centre Werewolf to ${nameOf(n.targetId)}.`;
+    case "alpha_wolf_no_swap":
+      return "No centre Werewolf to swap.";
+    case "mystic_wolf_saw":
+      return `Looked at ${nameOf(n.targetId)} — ${label(n.role)}.`;
+    case "dream_wolf_seen":
+      return "Dream Wolf — stayed asleep.";
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":

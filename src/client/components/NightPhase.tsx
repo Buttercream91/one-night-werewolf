@@ -206,6 +206,16 @@ function ActionForm({
         {prompt.kind === "sentinel_choose" && (
           <SentinelControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
         )}
+        {prompt.kind === "alpha_wolf_choose" && (
+          <AlphaWolfControls
+            room={room}
+            eligibleIds={prompt.eligiblePlayerIds}
+            hasCenterWolf={prompt.hasCenterWolf}
+          />
+        )}
+        {prompt.kind === "mystic_wolf_choose" && (
+          <MysticWolfControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
+        )}
       </div>
     </div>
   );
@@ -239,6 +249,95 @@ function DoppelgangerControls({ room, eligibleIds }: { room: PublicRoom; eligibl
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function AlphaWolfControls({
+  room,
+  eligibleIds,
+  hasCenterWolf,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+  hasCenterWolf: boolean;
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  if (!hasCenterWolf) {
+    return (
+      <div className="flex flex-wrap gap-2 items-center">
+        <p className="text-sm text-slate-400 italic">
+          No Werewolf card is in the centre — there's nothing to swap.
+        </p>
+        <button
+          className="btn-ghost"
+          onClick={() => send.nightAction({ kind: "alpha_wolf_swap", targetId: null })}
+        >
+          Continue
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be swapped" : undefined}
+            onClick={() => send.nightAction({ kind: "alpha_wolf_swap", targetId: p.id })}
+          >
+            Give the wolf card to {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
+      <button
+        className="btn-ghost"
+        onClick={() => send.nightAction({ kind: "alpha_wolf_swap", targetId: null })}
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
+function MysticWolfControls({
+  room,
+  eligibleIds,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be viewed" : undefined}
+            onClick={() => send.nightAction({ kind: "mystic_wolf_view", targetId: p.id })}
+          >
+            Look at {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
+      <button
+        className="btn-ghost"
+        onClick={() => send.nightAction({ kind: "mystic_wolf_view", targetId: null })}
+      >
+        Skip
+      </button>
     </div>
   );
 }

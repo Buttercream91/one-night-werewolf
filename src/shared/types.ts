@@ -205,6 +205,13 @@ export type ActionLogEntry =
   // Daybreak — Sentinel shielding (or skipping).
   | { kind: "sentinel_shielded"; actorId: string; targetId: string }
   | { kind: "sentinel_skipped"; actorId: string }
+  // Daybreak wolf-family entries. Alpha Wolf swaps without seeing either
+  // card, so the entry just records the swap (the reveal log will show the
+  // resulting centre + target afterwards). Mystic Wolf sees the role.
+  | { kind: "alpha_wolf_swapped"; actorId: string; targetId: string; centerIndex: number }
+  | { kind: "alpha_wolf_no_swap"; actorId: string }
+  | { kind: "mystic_wolf_saw"; actorId: string; targetId: string; role: Role }
+  | { kind: "mystic_wolf_skipped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -380,6 +387,15 @@ export type NightNote =
   // Daybreak — Sentinel records who they shielded (or that they skipped).
   | { kind: "sentinel_shielded"; targetId: string }
   | { kind: "sentinel_skipped" }
+  // Daybreak — Alpha Wolf swapped (or couldn't / skipped).
+  | { kind: "alpha_wolf_swapped"; targetId: string; centerIndex: number }
+  | { kind: "alpha_wolf_no_swap" }
+  // Daybreak — Mystic Wolf peeked another player's card. (Skipping yields
+  // no note — same convention as seer_skipped / robber_skipped.)
+  | { kind: "mystic_wolf_saw"; targetId: string; role: Role }
+  // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
+  // the wolves can now see them.
+  | { kind: "dream_wolf_seen" }
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
   | { kind: "lone_wolf_center"; index: number; role: Role }
@@ -412,6 +428,17 @@ export type NightPrompt =
   | { kind: "drunk_choose"; message: string }
   // Daybreak — Sentinel picks any non-self player to receive the shield.
   | { kind: "sentinel_choose"; message: string; eligiblePlayerIds: string[] }
+  // Daybreak — Alpha Wolf picks a non-wolf player to receive the centre
+  // Werewolf card. hasCenterWolf is false when there's no Werewolf card in
+  // the centre to swap (only skip is meaningful then).
+  | {
+      kind: "alpha_wolf_choose";
+      message: string;
+      eligiblePlayerIds: string[];
+      hasCenterWolf: boolean;
+    }
+  // Daybreak — Mystic Wolf peeks one player's card.
+  | { kind: "mystic_wolf_choose"; message: string; eligiblePlayerIds: string[] }
   | { kind: "ack"; message: string }; // No choice — just confirm "got it".
 
 // Action submissions from a single player.
@@ -426,7 +453,13 @@ export type NightAction =
   | { kind: "troublemaker_swap"; targetIds: [string, string] | null }
   | { kind: "drunk_swap"; centerIndex: number }
   // Daybreak — Sentinel places a shield on a non-self player. Null = skip.
-  | { kind: "sentinel_shield"; targetId: string | null };
+  | { kind: "sentinel_shield"; targetId: string | null }
+  // Daybreak — Alpha Wolf swaps a centre Werewolf card with a non-wolf
+  // player's card. targetId is the player to swap with; null = skip (e.g.
+  // when no centre Werewolf exists or no eligible target).
+  | { kind: "alpha_wolf_swap"; targetId: string | null }
+  // Daybreak — Mystic Wolf peeks one other player's card. Null = skip.
+  | { kind: "mystic_wolf_view"; targetId: string | null };
 
 export interface ChatMessage {
   id: string;

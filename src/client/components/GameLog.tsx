@@ -90,10 +90,12 @@ function dotColor(e: ActionLogEntry): string {
     case "robber_swapped":
     case "troublemaker_swapped":
     case "drunk_swapped":
+    case "alpha_wolf_swapped":
       return "bg-amber-400";
     case "werewolves_revealed":
     case "masons_revealed":
     case "minion_saw_werewolves":
+    case "mystic_wolf_saw":
       return "bg-rose-400";
     default:
       return "bg-emerald-400";
@@ -117,6 +119,36 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
         <>
           <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="sentinel" />)
           skipped the shield.
+        </>
+      );
+    case "alpha_wolf_swapped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="alpha_wolf" />)
+          moved the centre Werewolf (#{e.centerIndex + 1}) into{" "}
+          <PlayerChip id={e.targetId} room={room} />'s hand.
+        </>
+      );
+    case "alpha_wolf_no_swap":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="alpha_wolf" />)
+          had no centre Werewolf to swap.
+        </>
+      );
+    case "mystic_wolf_saw":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="mystic_wolf" />)
+          looked at <PlayerChip id={e.targetId} room={room} />'s card —{" "}
+          <RoleChip role={e.role} />.
+        </>
+      );
+    case "mystic_wolf_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="mystic_wolf" />)
+          chose not to look.
         </>
       );
     case "doppelganger_copied":

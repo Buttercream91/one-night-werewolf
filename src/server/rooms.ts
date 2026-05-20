@@ -486,13 +486,13 @@ export class Room {
   endNightStep() {
     if (!this.nightStep) return;
     const step = this.nightStep;
-    // Effective wolf count includes Doppelganger-as-Werewolf.
-    const effectiveWolves = this.players.filter(
-      (p) =>
-        p.originalRole === "werewolf" ||
-        (p.originalRole === "doppelganger" && p.doppelgangerCopied === "werewolf"),
-    ).length;
-    const isLoneWolf = effectiveWolves === 1;
+    // "Lone wolf" peek check: the actor only gets the centre peek when they
+    // are the sole wolf in play. With Daybreak, any wolf-family role
+    // (Werewolf / Alpha / Mystic / Dream + DG copies of any) counts toward
+    // the wolf headcount — a Dream Wolf cancels lone status even though they
+    // never wake (the live wolf "knows" they're not alone).
+    const totalWolves = this.players.filter((p) => isAnyWolf(p)).length;
+    const isLoneWolf = totalWolves === 1;
     for (const actorId of [...this.nightPendingActors]) {
       const player = this.players.find((p) => p.id === actorId);
       if (!player || !player.originalRole) continue;
@@ -579,25 +579,37 @@ export class Room {
   private actedOnStep(p: ServerPlayer, step: NightStep): boolean {
     if (!p.originalRole) return false;
     if (step === "doppelganger") return p.originalRole === "doppelganger";
-    if (step === "doppelganger_act") {
-      return (
-        p.originalRole === "doppelganger" &&
-        !!p.doppelgangerCopied &&
-        ["seer", "robber", "troublemaker", "drunk"].includes(p.doppelgangerCopied)
-      );
+    // doppelganger_act / the new DG sub-steps all share the same shape — the
+    // DG counts as having acted iff their copy matches the slot.
+    if (step === "doppelganger_act") return isDgActActor(p);
+    if (step === "doppelganger_insomniac") {
+      return p.originalRole === "doppelganger" && p.doppelgangerCopied === "insomniac";
     }
+    if (step === "doppelganger_revealer") {
+      return p.originalRole === "doppelganger" && p.doppelgangerCopied === "revealer";
+    }
+    if (step === "doppelganger_curator") {
+      return p.originalRole === "doppelganger" && p.doppelgangerCopied === "curator";
+    }
+    // Werewolves step: any awake wolf (including DG copies of Alpha/Mystic).
+    if (step === "werewolves") return isAwakeWolfP(p);
     const target: Role =
-      step === "werewolves"
-        ? "werewolf"
-        : step === "masons"
-          ? "mason"
-          : (step as Role);
+      step === "masons" ? "mason" : (step as Role);
     if (p.originalRole === target) return true;
-    // DG copies of werewolf/minion/mason/insomniac still act on those steps.
+    // DG copies of werewolf/minion/mason/insomniac/revealer/curator/bodyguard
+    // still act on those steps (concurrent or after-real-role patterns). The
+    // DG-act roles (Sentinel/Alpha/Mystic/AppSeer/PI/Witch/VillageIdiot and
+    // the base four) acted earlier and shouldn't be counted again here.
+    const dgActSet = [
+      "seer", "robber", "troublemaker", "drunk",
+      "sentinel", "alpha_wolf", "mystic_wolf",
+      "apprentice_seer", "paranormal_investigator",
+      "witch", "village_idiot",
+    ];
     if (
       p.originalRole === "doppelganger" &&
       p.doppelgangerCopied === target &&
-      !["seer", "robber", "troublemaker", "drunk"].includes(target)
+      !dgActSet.includes(target)
     ) {
       return true;
     }
@@ -1279,12 +1291,8 @@ export class Room {
     // If they had a pending night action, default it now so the step doesn't
     // wait on them and other roles' visible info stays consistent.
     if (this.phase === "night" && this.nightStep && this.nightPendingActors.has(playerId)) {
-      const effectiveWolves = this.players.filter(
-        (q) =>
-          q.originalRole === "werewolf" ||
-          (q.originalRole === "doppelganger" && q.doppelgangerCopied === "werewolf"),
-      ).length;
-      const isLoneWolf = effectiveWolves === 1;
+      const totalWolves = this.players.filter((q) => isAnyWolf(q)).length;
+      const isLoneWolf = totalWolves === 1;
       const fallbackTargetId =
         this.nightStep === "doppelganger"
           ? this.players.find((q) => q.id !== p.id && !q.spectating)?.id
@@ -1482,6 +1490,45 @@ function countRoles(roles: Role[]): Partial<Record<Role, number>> {
   const c: Partial<Record<Role, number>> = {};
   for (const r of roles) c[r] = (c[r] ?? 0) + 1;
   return c;
+}
+
+// True if this player is any kind of wolf (Werewolf / Alpha / Mystic / Dream)
+// either directly or via a Doppelganger copy. Used by endNightStep's lone-
+// wolf-peek heuristic so a Dream Wolf in play cancels lone status even
+// though they never wake.
+function isAnyWolf(p: ServerPlayer): boolean {
+  if (!p.originalRole) return false;
+  const wolfRoles: Role[] = ["werewolf", "alpha_wolf", "mystic_wolf", "dream_wolf"];
+  if (wolfRoles.includes(p.originalRole)) return true;
+  if (p.originalRole === "doppelganger" && p.doppelgangerCopied) {
+    return wolfRoles.includes(p.doppelgangerCopied);
+  }
+  return false;
+}
+
+// Awake wolves (Werewolf / Alpha Wolf / Mystic Wolf or DG copies of them).
+// Dream Wolves are wolves but don't wake — excluded here.
+function isAwakeWolfP(p: ServerPlayer): boolean {
+  if (!p.originalRole) return false;
+  const awake: Role[] = ["werewolf", "alpha_wolf", "mystic_wolf"];
+  if (awake.includes(p.originalRole)) return true;
+  if (p.originalRole === "doppelganger" && p.doppelgangerCopied) {
+    return awake.includes(p.doppelgangerCopied);
+  }
+  return false;
+}
+
+// True if this player is a Doppelganger who copied one of the roles that
+// act inside the doppelganger_act step.
+function isDgActActor(p: ServerPlayer): boolean {
+  if (p.originalRole !== "doppelganger" || !p.doppelgangerCopied) return false;
+  const dgActSet: Role[] = [
+    "seer", "robber", "troublemaker", "drunk",
+    "sentinel", "alpha_wolf", "mystic_wolf",
+    "apprentice_seer", "paranormal_investigator",
+    "witch", "village_idiot",
+  ];
+  return dgActSet.includes(p.doppelgangerCopied);
 }
 
 // Last index in `arr` whose value is one of `needles`. Used by setWolfCap to
