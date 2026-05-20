@@ -229,6 +229,107 @@ describe("resolveVotes — Bodyguard saves", () => {
   });
 });
 
+describe("resolveVotes — Daybreak artifact team locks", () => {
+  test("Claw artifact: killing the bearer counts as a Werewolf kill (village wins)", () => {
+    const { room, ids } = makeRoom([
+      ["A", "villager"],
+      ["B", "seer"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    room.playerArtifacts.set(ids.A, "claw");
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+    expect(r.winners).not.toContain("werewolf");
+  });
+
+  test("Cudgel artifact: killing the bearer satisfies the Tanner win", () => {
+    const { room, ids } = makeRoom([
+      ["A", "villager"],
+      ["B", "werewolf"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    room.playerArtifacts.set(ids.A, "cudgel");
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("tanner");
+  });
+
+  test("Brand artifact on a Werewolf: killing them no longer counts as a wolf-kill", () => {
+    const { room, ids } = makeRoom([
+      ["A", "werewolf"],
+      ["B", "seer"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    room.playerArtifacts.set(ids.A, "brand");
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    // A is "villager" via Brand. The room has no Werewolf effectively (Brand
+    // turned the only one). Wolfless house rule: villager killed → wolf-team
+    // wins via the Minion bucket (no minion either here, but the bucket is
+    // still added).
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("minion");
+    expect(r.winners).not.toContain("villager");
+  });
+
+  test("Artifact trumps Doppelganger team lock", () => {
+    // DG copies Werewolf → team would be werewolf, but a Brand artifact
+    // re-tags them as villager. Killing them = no wolf kill.
+    const { room, ids } = makeRoom([
+      ["A", "doppelganger", "werewolf"],
+      ["B", "werewolf"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    room.playerArtifacts.set(ids.A, "brand");
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    // Real Werewolf B is still alive → wolf team wins.
+    expect(r.winners).toContain("werewolf");
+    expect(r.winners).not.toContain("villager");
+  });
+});
+
+describe("resolveVotes — Paranormal Investigator team lock", () => {
+  test("PI who viewed a Wolf and got killed counts as a wolf-team death", () => {
+    const { room, ids } = makeRoom([
+      ["A", "paranormal_investigator"],
+      ["B", "werewolf"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    // Simulate the PI having viewed a werewolf during the night.
+    const pi = room.players.find((p) => p.id === ids.A)!;
+    pi.piTeamRole = "werewolf";
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+  });
+
+  test("PI locked to Tanner satisfies the Tanner win if killed", () => {
+    const { room, ids } = makeRoom([
+      ["A", "paranormal_investigator"],
+      ["B", "werewolf"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    const pi = room.players.find((p) => p.id === ids.A)!;
+    pi.piTeamRole = "tanner";
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("tanner");
+  });
+});
+
 describe("resolveVotes — wolfless games (house rule)", () => {
   test("wolfless, villager killed → wolf-team (minion) wins", () => {
     const { room, ids } = makeRoom([

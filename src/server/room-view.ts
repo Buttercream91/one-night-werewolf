@@ -87,12 +87,13 @@ export function toPublicRoom(room: Room): PublicRoom {
               : { playerId },
           )
         : undefined,
-    artifactMutedIds:
-      room.playerArtifacts.size > 0 && room.phase !== "lobby"
-        ? [...room.playerArtifacts.entries()]
-            .filter(([, kind]) => kind === "mask")
-            .map(([id]) => id)
-        : undefined,
+    artifactMutedIds: (() => {
+      if (room.phase === "lobby") return undefined;
+      const ids = [...room.playerArtifacts.entries()]
+        .filter(([, kind]) => kind === "mask")
+        .map(([id]) => id);
+      return ids.length > 0 ? ids : undefined;
+    })(),
     dayEndsAt: room.dayEndsAt,
     daySeconds: room.daySeconds,
     voteEndsAt: room.voteEndsAt,
