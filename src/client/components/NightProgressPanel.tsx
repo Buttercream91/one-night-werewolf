@@ -12,16 +12,28 @@ interface Props {
 const STEP_LABEL: Record<NightStep, string> = {
   intro: "Night Begins",
   night_starts: "Night underway",
+  sentinel: "Sentinel",
   doppelganger: "Doppelganger",
   doppelganger_act: "Doppelganger acts",
   werewolves: "Werewolves",
+  alpha_wolf: "Alpha Wolf",
+  mystic_wolf: "Mystic Wolf",
   minion: "Minion",
   masons: "Masons",
   seer: "Seer",
+  apprentice_seer: "Apprentice Seer",
+  paranormal_investigator: "P.I.",
   robber: "Robber",
+  witch: "Witch",
   troublemaker: "Troublemaker",
+  village_idiot: "Village Idiot",
   drunk: "Drunk",
   insomniac: "Insomniac",
+  doppelganger_insomniac: "DG-Insomniac",
+  revealer: "Revealer",
+  doppelganger_revealer: "DG-Revealer",
+  curator: "Curator",
+  doppelganger_curator: "DG-Curator",
   outro: "Wake up",
 };
 
@@ -37,9 +49,25 @@ function stepInPlay(roles: Role[], step: NightStep): boolean {
       roles.includes("seer") ||
       roles.includes("robber") ||
       roles.includes("troublemaker") ||
-      roles.includes("drunk")
+      roles.includes("drunk") ||
+      // Daybreak roles that act immediately in doppelganger_act once
+      // implemented; included in the gating so the step still shows on the
+      // progress bar even before their per-role setup lands.
+      roles.includes("sentinel") ||
+      roles.includes("alpha_wolf") ||
+      roles.includes("mystic_wolf") ||
+      roles.includes("apprentice_seer") ||
+      roles.includes("paranormal_investigator") ||
+      roles.includes("witch") ||
+      roles.includes("village_idiot")
     );
   }
+  if (step === "doppelganger_insomniac")
+    return roles.includes("doppelganger") && roles.includes("insomniac");
+  if (step === "doppelganger_revealer")
+    return roles.includes("doppelganger") && roles.includes("revealer");
+  if (step === "doppelganger_curator")
+    return roles.includes("doppelganger") && roles.includes("curator");
   const role: Role =
     step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
   return roles.includes(role);

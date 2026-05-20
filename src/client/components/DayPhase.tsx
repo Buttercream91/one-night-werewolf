@@ -142,6 +142,14 @@ function DayPlayerTile({
         <span className={`font-medium ${nameCls}`}>
           {player.name}
           <DevModeTag show={!!room.devMode && player.isHost} />
+          {(room.shieldedPlayerIds ?? []).includes(player.id) && (
+            <span
+              className="ml-1 text-sky-300"
+              title="Shielded by the Sentinel — their card couldn't be touched at night"
+            >
+              🛡
+            </span>
+          )}
         </span>
         <div className="flex items-center gap-1">
           {ready && <span className="text-xs text-emerald-300">ready</span>}

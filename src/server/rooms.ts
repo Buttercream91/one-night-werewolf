@@ -137,6 +137,11 @@ export class Room {
   nightStepVoiceFiles?: string[];
   nightStepTimer?: NodeJS.Timeout;
   nightPendingActors = new Set<string>();
+  // Daybreak — IDs of players whose cards are protected by the Sentinel's
+  // shield. Populated during the Sentinel step; every subsequent night
+  // action checks this set before touching the target. Cleared at game
+  // start and at reset.
+  shieldedPlayerIds = new Set<string>();
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
   voteEndsAt?: number;
@@ -386,6 +391,7 @@ export class Room {
     this.winners = undefined;
     this.actionLog = [];
     this.accusations = [];
+    this.shieldedPlayerIds.clear();
     this.chatMessages = []; // start the new round's chat fresh
 
     this.phase = "night";
@@ -424,6 +430,7 @@ export class Room {
     this.winners = undefined;
     this.actionLog = [];
     this.accusations = [];
+    this.shieldedPlayerIds.clear();
     if (this.dayTimer) {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;

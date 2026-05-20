@@ -203,6 +203,9 @@ function ActionForm({
         {prompt.kind === "drunk_choose" && (
           <p className="text-sm text-slate-400 italic">Click a center card above to take it.</p>
         )}
+        {prompt.kind === "sentinel_choose" && (
+          <SentinelControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
+        )}
       </div>
     </div>
   );
@@ -229,6 +232,35 @@ function DoppelgangerControls({ room, eligibleIds }: { room: PublicRoom; eligibl
           Copy {p.name}
         </button>
       ))}
+    </div>
+  );
+}
+
+function SentinelControls({
+  room,
+  eligibleIds,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  return (
+    <div className="flex flex-wrap gap-2">
+      {eligible.map((p) => (
+        <button
+          key={p.id}
+          className="btn-ghost"
+          onClick={() => send.nightAction({ kind: "sentinel_shield", targetId: p.id })}
+        >
+          🛡 Shield {p.name}
+        </button>
+      ))}
+      <button
+        className="btn-ghost"
+        onClick={() => send.nightAction({ kind: "sentinel_shield", targetId: null })}
+      >
+        Skip
+      </button>
     </div>
   );
 }
@@ -377,6 +409,8 @@ function moderatorLine(step: NightStep, selectedRoles: Role[]): string {
       return "Everyone, look at your card. Turn it face down when you are ready to begin.";
     case "night_starts":
       return "The night begins.";
+    case "sentinel":
+      return "Sentinel, open your eyes. Place a shield token on any player's card but your own.";
     case "doppelganger":
       return "Doppelganger, open your eyes and look at another player's card.";
     case "doppelganger_act": {
@@ -391,21 +425,43 @@ function moderatorLine(step: NightStep, selectedRoles: Role[]): string {
       return `If you viewed the ${list} card, do your action now.`;
     }
     case "werewolves":
-      return "Werewolves, open your eyes and look for other Werewolves.";
+      return "Werewolves, open your eyes and look for other Werewolves. Dream Wolf, the wolves can see you.";
+    case "alpha_wolf":
+      return "Alpha Wolf, exchange the centre Werewolf card with any other player's card.";
+    case "mystic_wolf":
+      return "Mystic Wolf, you may look at another player's card.";
     case "minion":
       return "Minion, open your eyes and look for the Werewolves.";
     case "masons":
       return "Masons, open your eyes and look for other Masons.";
     case "seer":
       return "Seer, open your eyes. You may look at one player's card or two center cards.";
+    case "apprentice_seer":
+      return "Apprentice Seer, you may look at one of the centre cards.";
+    case "paranormal_investigator":
+      return "P.I., you may look at up to two players' cards. Stop if you see a Werewolf, Minion, or Tanner — you become that role.";
     case "robber":
       return "Robber, open your eyes. You may exchange your card with another player's.";
+    case "witch":
+      return "Witch, you may look at one centre card. If you do, you must swap it with any player's card.";
     case "troublemaker":
       return "Troublemaker, open your eyes. You may swap two other players' cards.";
+    case "village_idiot":
+      return "Village Idiot, you may rotate every other player's card to the left or to the right.";
     case "drunk":
       return "Drunk, open your eyes and exchange your card with one in the center.";
     case "insomniac":
       return "Insomniac, open your eyes and look at your card.";
+    case "doppelganger_insomniac":
+      return "Doppelganger, if you copied the Insomniac, look at your card.";
+    case "revealer":
+      return "Revealer, you may flip another player's card face up. If they're on the wolf or tanner team it stays hidden.";
+    case "doppelganger_revealer":
+      return "Doppelganger, if you copied the Revealer, you may flip another player's card.";
+    case "curator":
+      return "Curator, you may place an artifact token face down on any player's card.";
+    case "doppelganger_curator":
+      return "Doppelganger, if you copied the Curator, you may place an artifact on a card without one.";
     case "outro":
       return "Everyone wake up, the night will end in 5… 4… 3… 2… 1.";
   }
@@ -419,6 +475,13 @@ function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolea
   if (step === "werewolves") return originalRole === "werewolf";
   if (step === "masons") return originalRole === "mason";
   if (step === "doppelganger_act") return originalRole === "doppelganger";
+  if (
+    step === "doppelganger_insomniac" ||
+    step === "doppelganger_revealer" ||
+    step === "doppelganger_curator"
+  ) {
+    return originalRole === "doppelganger";
+  }
   if (step === "intro" || step === "night_starts" || step === "outro") return false;
   return originalRole === step;
 }

@@ -13,16 +13,30 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 const STEP_FILE: Record<NightStep, string | null> = {
   intro: "Intro.mp3",
   night_starts: "TheNightBegins.mp3",
+  // Daybreak — each new step gets its own narration clip; voice script will
+  // generate them on the next voice:gen run.
+  sentinel: "Sentinel.mp3",
   doppelganger: "Doppelganger.mp3",
   doppelganger_act: null, // built dynamically by stepFilesFor
   werewolves: "Werewolves.mp3",
+  alpha_wolf: "AlphaWolf.mp3",
+  mystic_wolf: "MysticWolf.mp3",
   minion: "Minion.mp3",
   masons: "Mason.mp3",
   seer: "Seer.mp3",
+  apprentice_seer: "ApprenticeSeer.mp3",
+  paranormal_investigator: "ParanormalInvestigator.mp3",
   robber: "Robber.mp3",
+  witch: "Witch.mp3",
   troublemaker: "Troublemaker.mp3",
+  village_idiot: "VillageIdiot.mp3",
   drunk: "Drunk.mp3",
   insomniac: "Insomniac.mp3",
+  doppelganger_insomniac: "DoppelgangerInsomniac.mp3",
+  revealer: "Revealer.mp3",
+  doppelganger_revealer: "DoppelgangerRevealer.mp3",
+  curator: "Curator.mp3",
+  doppelganger_curator: "DoppelgangerCurator.mp3",
   outro: "Outro.mp3",
 };
 
@@ -83,6 +97,27 @@ export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
     if (!selectedRoles.includes("doppelganger")) return false;
     return DG_ACT_ROLES.some((r) => selectedRoles.includes(r));
   }
+  // Daybreak DG-after-real-role sub-steps: only run when both the DG and
+  // the real role are in the deck (otherwise no DG could have copied it).
+  if (step === "doppelganger_insomniac") {
+    return (
+      selectedRoles.includes("doppelganger") && selectedRoles.includes("insomniac")
+    );
+  }
+  if (step === "doppelganger_revealer") {
+    return (
+      selectedRoles.includes("doppelganger") && selectedRoles.includes("revealer")
+    );
+  }
+  if (step === "doppelganger_curator") {
+    return (
+      selectedRoles.includes("doppelganger") && selectedRoles.includes("curator")
+    );
+  }
+  // Daybreak — the wolf sub-steps and Seer-family sub-steps run iff their
+  // role is in the deck. Same for the late roles (Witch, Village Idiot,
+  // Revealer, Curator). isStepInPlay handles them generically via the
+  // string-to-Role mapping below.
   const role: Role =
     step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
   return selectedRoles.includes(role);
@@ -101,18 +136,34 @@ export const STEP_SECONDS: Record<NightStep, number> = {
   intro: 60,
   // Brief transition: "The Night begins" plays then we advance.
   night_starts: 3,
+  // Daybreak — Sentinel: pick a non-self player to shield.
+  sentinel: 10,
   // Pick a player to copy only — the action-buffer that used to live here
   // moved into doppelganger_act for those who copied an actionable role.
   doppelganger: 6,
   doppelganger_act: 16, // dynamic intro + time to pick a target / centre card
   werewolves: 14,
+  // Daybreak wolf sub-steps.
+  alpha_wolf: 12,
+  mystic_wolf: 12,
   minion: 16,
   masons: 8,
   seer: 16,
+  // Daybreak Seer-family sub-steps.
+  apprentice_seer: 10,
+  paranormal_investigator: 18,
   robber: 14,
+  witch: 14,
   troublemaker: 15,
+  village_idiot: 12,
   drunk: 9,
   insomniac: 7,
+  // Daybreak DG sub-step after the real Insomniac.
+  doppelganger_insomniac: 7,
+  revealer: 14,
+  doppelganger_revealer: 14,
+  curator: 12,
+  doppelganger_curator: 12,
   // Fits the "...night will end in 5... 4... 3... 2... 1" line.
   outro: 6,
 };
@@ -170,11 +221,29 @@ export function defaultActionFor(
       const idx = Math.floor(Math.random() * 3);
       return { kind: "drunk_swap", centerIndex: idx };
     }
+    case "sentinel":
+      // No fallback target — the Sentinel can always skip the shield.
+      return { kind: "sentinel_shield", targetId: null };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
     case "outro":
       return { kind: "ack" }; // never used (no pending actors)
+    // Daybreak roles that don't have logic wired yet — fall through to ack
+    // so endNightStep doesn't crash on the auto-default. Each will get a
+    // dedicated case in its phase.
+    case "alpha_wolf":
+    case "mystic_wolf":
+    case "apprentice_seer":
+    case "paranormal_investigator":
+    case "witch":
+    case "village_idiot":
+    case "revealer":
+    case "curator":
+    case "doppelganger_insomniac":
+    case "doppelganger_revealer":
+    case "doppelganger_curator":
+      return { kind: "ack" };
   }
 }
 
@@ -212,6 +281,21 @@ export function setupNightStep(room: Room, step: NightStep) {
   if (actors.length === 0) return;
 
   switch (step) {
+    case "sentinel": {
+      for (const s of actors) {
+        const eligible = room.players
+          .filter((p) => p.id !== s.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        s.prompt = {
+          kind: "sentinel_choose",
+          message:
+            "You are the Sentinel. Place a shield token on another player's card. Their card can't be looked at, swapped, or revealed for the rest of the night.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(s.id);
+      }
+      return;
+    }
     case "doppelganger": {
       for (const d of actors) {
         const eligible = room.players
@@ -388,6 +472,29 @@ export function applyNightAction(
       return validAck ? { ok: true } : { ok: false, error: "Ack not valid here" };
     }
 
+    case "sentinel_shield": {
+      if (step !== "sentinel" || original !== "sentinel") {
+        return { ok: false, error: "Not sentinel step" };
+      }
+      if (action.targetId === null) {
+        player.notes.push({ kind: "sentinel_skipped" });
+        room.actionLog.push({ kind: "sentinel_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
+      room.shieldedPlayerIds.add(target.id);
+      player.notes.push({ kind: "sentinel_shielded", targetId: target.id });
+      room.actionLog.push({
+        kind: "sentinel_shielded",
+        actorId: player.id,
+        targetId: target.id,
+      });
+      return { ok: true };
+    }
+
     case "doppelganger_copy": {
       if (step !== "doppelganger" || original !== "doppelganger") {
         return { ok: false, error: "Not doppelganger step" };
@@ -395,6 +502,9 @@ export function applyNightAction(
       const target = room.players.find((p) => p.id === action.targetId);
       if (!target || target.id === player.id || target.spectating) {
         return { ok: false, error: "Invalid target" };
+      }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
       }
       const copied = room.currentRoleOf(target.id);
       if (copied === "doppelganger") return { ok: false, error: "Cannot copy a Doppelganger" };
@@ -461,6 +571,9 @@ export function applyNightAction(
       if (!target || target.id === player.id || target.spectating) {
         return { ok: false, error: "Invalid target" };
       }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
       const role = room.currentRoleOf(target.id);
       player.notes.push({ kind: "seer_player", playerId: target.id, role });
       room.actionLog.push({
@@ -498,6 +611,9 @@ export function applyNightAction(
       if (!target || target.id === player.id || target.spectating) {
         return { ok: false, error: "Invalid target" };
       }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
       // Capture the actor's current role before the swap — that's what the
       // target ends up holding after.
       const actorOldRole = room.currentRoleOf(player.id);
@@ -533,6 +649,9 @@ export function applyNightAction(
       const b = room.players.find((p) => p.id === bId);
       if (!a || !b || a.spectating || b.spectating) {
         return { ok: false, error: "Unknown player" };
+      }
+      if (isShielded(room, aId) || isShielded(room, bId)) {
+        return { ok: false, error: "One of those players is shielded by the Sentinel." };
       }
       // After the swap, a holds b's old role and vice versa.
       const aOld = room.currentRoleOf(a.id);
@@ -590,6 +709,13 @@ function isEffective(player: ServerPlayer, role: Role): boolean {
     return true;
   }
   return false;
+}
+
+// True if the target player is shielded by the Sentinel — used by every
+// night action that looks at or swaps a player's card to refuse the action
+// and surface a friendly error.
+function isShielded(room: Room, playerId: string): boolean {
+  return room.shieldedPlayerIds.has(playerId);
 }
 
 // Accepts an action submitted as `role` during the current step. True when:

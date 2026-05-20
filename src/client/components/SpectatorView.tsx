@@ -232,6 +232,10 @@ function describeNote(n: NightNote, room: PublicRoom): string {
   switch (n.kind) {
     case "starting_role":
       return `Dealt: ${label(n.role)}.`;
+    case "sentinel_shielded":
+      return `Shielded ${nameOf(n.targetId)}.`;
+    case "sentinel_skipped":
+      return "Skipped the shield.";
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":

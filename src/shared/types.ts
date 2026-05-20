@@ -165,6 +165,10 @@ export interface PublicRoom {
   // (the intro waits on this instead of a timer). Used by the client to show
   // an X/Y "ready" indicator and per-player checkmarks.
   nightIntroFlippedIds?: string[];
+  // Daybreak — IDs of players with a Sentinel shield on their card. The
+  // shield blocks all subsequent night actions targeting that card. Public so
+  // every player can see the shield icon on the affected tile.
+  shieldedPlayerIds?: string[];
   // Filenames under /voice/<pack>/ to play in sequence at the start of this
   // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
   // the server assembles multiple clips so the narrator can name only the
@@ -198,6 +202,9 @@ export interface Accusation {
 // Revealed to all players at the reveal phase so the table can reconstruct
 // the night. Player IDs are resolved to names client-side.
 export type ActionLogEntry =
+  // Daybreak — Sentinel shielding (or skipping).
+  | { kind: "sentinel_shielded"; actorId: string; targetId: string }
+  | { kind: "sentinel_skipped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -247,31 +254,66 @@ export type ActionLogEntry =
 export type NightStep =
   | "intro"
   | "night_starts"
+  // Daybreak: Sentinel acts first, placing a shield that blocks every
+  // subsequent player-targeting night action against the shielded card.
+  | "sentinel"
   | "doppelganger"
   | "doppelganger_act"
   | "werewolves"
+  // Daybreak wolf sub-steps run after the wolves see each other.
+  | "alpha_wolf"
+  | "mystic_wolf"
   | "minion"
   | "masons"
   | "seer"
+  // Daybreak sub-steps inside the Seer's call.
+  | "apprentice_seer"
+  | "paranormal_investigator"
   | "robber"
+  // Daybreak: Witch acts after the Robber.
+  | "witch"
   | "troublemaker"
+  // Daybreak: Village Idiot acts after the Troublemaker.
+  | "village_idiot"
   | "drunk"
   | "insomniac"
+  // Daybreak DG sub-step: a Doppelganger who copied an Insomniac wakes
+  // after the real Insomniac and looks at their own (still-Doppelganger
+  // unless something swapped them) card.
+  | "doppelganger_insomniac"
+  // Daybreak Revealer + its DG sub-step.
+  | "revealer"
+  | "doppelganger_revealer"
+  // Daybreak Curator + its DG sub-step.
+  | "curator"
+  | "doppelganger_curator"
   | "outro";
 
 export const NIGHT_ORDER: NightStep[] = [
   "intro",
   "night_starts",
+  "sentinel",
   "doppelganger",
   "doppelganger_act",
   "werewolves",
+  "alpha_wolf",
+  "mystic_wolf",
   "minion",
   "masons",
   "seer",
+  "apprentice_seer",
+  "paranormal_investigator",
   "robber",
+  "witch",
   "troublemaker",
+  "village_idiot",
   "drunk",
   "insomniac",
+  "doppelganger_insomniac",
+  "revealer",
+  "doppelganger_revealer",
+  "curator",
+  "doppelganger_curator",
   "outro",
 ];
 
@@ -335,6 +377,9 @@ export type NightNote =
   // starts, so once the card flips face-down they can still see what they were
   // dealt.
   | { kind: "starting_role"; role: Role }
+  // Daybreak — Sentinel records who they shielded (or that they skipped).
+  | { kind: "sentinel_shielded"; targetId: string }
+  | { kind: "sentinel_skipped" }
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
   | { kind: "lone_wolf_center"; index: number; role: Role }
@@ -365,6 +410,8 @@ export type NightPrompt =
   | { kind: "robber_choose"; message: string; eligiblePlayerIds: string[] }
   | { kind: "troublemaker_choose"; message: string; eligiblePlayerIds: string[] }
   | { kind: "drunk_choose"; message: string }
+  // Daybreak — Sentinel picks any non-self player to receive the shield.
+  | { kind: "sentinel_choose"; message: string; eligiblePlayerIds: string[] }
   | { kind: "ack"; message: string }; // No choice — just confirm "got it".
 
 // Action submissions from a single player.
@@ -377,7 +424,9 @@ export type NightAction =
   | { kind: "seer_skip" }
   | { kind: "robber_swap"; targetId: string | null } // null = skip
   | { kind: "troublemaker_swap"; targetIds: [string, string] | null }
-  | { kind: "drunk_swap"; centerIndex: number };
+  | { kind: "drunk_swap"; centerIndex: number }
+  // Daybreak — Sentinel places a shield on a non-self player. Null = skip.
+  | { kind: "sentinel_shield"; targetId: string | null };
 
 export interface ChatMessage {
   id: string;

@@ -98,6 +98,14 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           You are the <RoleChip role={n.role} />.
         </>
       );
+    case "sentinel_shielded":
+      return (
+        <>
+          You shielded <PlayerChip id={n.targetId} room={room} /> 🛡.
+        </>
+      );
+    case "sentinel_skipped":
+      return <>You skipped the shield.</>;
     case "doppelganger_copied":
       return (
         <>

@@ -40,6 +40,30 @@ const CLIPS: Record<string, string> = {
   // Brief transition clip — plays once every player has flipped, just before
   // the first role acts.
   TheNightBegins: "The night begins.",
+  // ---- Daybreak expansion clips ----
+  Sentinel:
+    "Sentinel, wake up. You may place a shield token on any player's card except your own.",
+  AlphaWolf:
+    "Alpha Wolf, wake up and exchange the centre Werewolf card for any other player's card.",
+  MysticWolf: "Mystic Wolf, wake up. You may look at another player's card.",
+  ApprenticeSeer:
+    "Apprentice Seer, wake up. You may look at one of the centre cards.",
+  ParanormalInvestigator:
+    "P.I., wake up. You may look at up to two players' cards. If you see a Werewolf, Minion, or Tanner, you stop and you become that role.",
+  Witch:
+    "Witch, wake up. You may look at one of the centre cards. If you do, you must exchange that card with any player's card.",
+  VillageIdiot:
+    "Village Idiot, wake up. You may move every other player's card one seat to the left or to the right.",
+  Revealer:
+    "Revealer, wake up. You may flip another player's card face up. If the card is on the wolf or tanner team, flip it back face down.",
+  Curator:
+    "Curator, wake up. You may place an artifact token face down on any player's card.",
+  DoppelgangerInsomniac:
+    "Doppelganger, if you copied the Insomniac, wake up and look at your card.",
+  DoppelgangerRevealer:
+    "Doppelganger, if you copied the Revealer, wake up. You may flip another player's card face up.",
+  DoppelgangerCurator:
+    "Doppelganger, if you copied the Curator, wake up. You may place an artifact token on any player's card that doesn't already have one.",
   Doppelganger:
     "Doppelganger, wake up and look at another player's card. You are now a copy of that role.",
   // Atomic clips for the dynamic doppelganger_act narration. The server picks

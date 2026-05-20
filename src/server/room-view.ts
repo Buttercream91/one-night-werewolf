@@ -62,6 +62,10 @@ export function toPublicRoom(room: Room): PublicRoom {
             )
             .map((p) => p.id)
         : undefined,
+    shieldedPlayerIds:
+      room.phase !== "lobby" && room.shieldedPlayerIds.size > 0
+        ? [...room.shieldedPlayerIds]
+        : undefined,
     dayEndsAt: room.dayEndsAt,
     daySeconds: room.daySeconds,
     voteEndsAt: room.voteEndsAt,

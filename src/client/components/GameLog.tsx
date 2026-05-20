@@ -105,6 +105,20 @@ function dotColor(e: ActionLogEntry): string {
 // flat string.
 function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
   switch (e.kind) {
+    case "sentinel_shielded":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="sentinel" />)
+          placed a shield on <PlayerChip id={e.targetId} room={room} /> 🛡.
+        </>
+      );
+    case "sentinel_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="sentinel" />)
+          skipped the shield.
+        </>
+      );
     case "doppelganger_copied":
       return (
         <>
