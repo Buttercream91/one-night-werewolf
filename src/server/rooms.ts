@@ -617,13 +617,25 @@ export class Room {
       return;
     }
     if (step === "insomniac") {
-      // Insomniac (and DG-as-Insomniac) keeps their card face-up afterwards.
+      // Real Insomniac keeps their card face-up afterwards. DG-as-Insomniac
+      // doesn't wake here anymore (handled in doppelganger_insomniac).
       for (const p of this.players) {
         if (p.spectating) continue;
-        const isInsomniacActor =
-          p.originalRole === "insomniac" ||
-          (p.originalRole === "doppelganger" && p.doppelgangerCopied === "insomniac");
-        if (isInsomniacActor) p.cardFaceDown = false;
+        if (p.originalRole === "insomniac") p.cardFaceDown = false;
+      }
+      return;
+    }
+    if (step === "doppelganger_insomniac") {
+      // DG-as-Insomniac keeps their card face-up afterwards — same lasting
+      // reveal as the real Insomniac.
+      for (const p of this.players) {
+        if (p.spectating) continue;
+        if (
+          p.originalRole === "doppelganger" &&
+          p.doppelgangerCopied === "insomniac"
+        ) {
+          p.cardFaceDown = false;
+        }
       }
       return;
     }
@@ -639,7 +651,9 @@ export class Room {
       step === "seer" ||
       step === "robber" ||
       step === "troublemaker" ||
-      step === "drunk"
+      step === "drunk" ||
+      step === "doppelganger_revealer" ||
+      step === "doppelganger_curator"
     ) {
       for (const p of this.players) {
         if (p.spectating) continue;
@@ -677,20 +691,23 @@ export class Room {
     const target: Role =
       step === "masons" ? "mason" : (step as Role);
     if (p.originalRole === target) return true;
-    // DG copies of werewolf/minion/mason/insomniac/revealer/curator/bodyguard
-    // still act on those steps (concurrent or after-real-role patterns). The
-    // DG-act roles (Sentinel/Alpha/Mystic/AppSeer/PI/Witch/VillageIdiot and
-    // the base four) acted earlier and shouldn't be counted again here.
-    const dgActSet = [
+    // DG copies of Werewolf/Minion/Mason still act on those steps (concurrent
+    // pattern). DG-act roles (Sentinel/Alpha/Mystic/AppSeer/PI/Witch/Village
+    // Idiot and the base four) acted earlier in doppelganger_act and don't
+    // count here. DG-after roles (Insomniac/Revealer/Curator) get their own
+    // dedicated doppelganger_X sub-step and likewise don't count on the
+    // real role's step.
+    const dgExcludeOnRealStep = [
       "seer", "robber", "troublemaker", "drunk",
       "sentinel", "alpha_wolf", "mystic_wolf",
       "apprentice_seer", "paranormal_investigator",
       "witch", "village_idiot",
+      "insomniac", "revealer", "curator",
     ];
     if (
       p.originalRole === "doppelganger" &&
       p.doppelgangerCopied === target &&
-      !dgActSet.includes(target)
+      !dgExcludeOnRealStep.includes(target)
     ) {
       return true;
     }

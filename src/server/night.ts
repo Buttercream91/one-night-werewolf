@@ -78,6 +78,16 @@ const DG_ACT_ROLE_CLIP: Partial<Record<DgActRole, string>> = {
   drunk: "Doppelganger_Act_Drunk.mp3",
 };
 
+// Daybreak — roles where the DG copy acts AFTER the real role's step (its
+// own per-DG sub-step). The DG must NOT be picked up as an actor on the
+// real role's step (handled by isEffective) and SHOULD be picked up by the
+// matching doppelganger_X sub-step (handled by effectiveActorsForStep).
+const DG_AFTER_ROLES = ["insomniac", "revealer", "curator"] as const;
+type DgAfterRole = (typeof DG_AFTER_ROLES)[number];
+function isDgAfterRole(role: Role | undefined): role is DgAfterRole {
+  return (DG_AFTER_ROLES as readonly Role[]).includes(role as Role);
+}
+
 // Awake wolves wake during the werewolves step — original Werewolf, Alpha
 // Wolf, Mystic Wolf, plus DG copies of any of those. Dream Wolves are wolves
 // for team purposes but they don't actually wake (their card stays in play
@@ -303,13 +313,15 @@ export function defaultActionFor(
     case "night_starts":
     case "outro":
       return { kind: "ack" }; // never used (no pending actors)
-    // Daybreak roles that don't have logic wired yet — fall through to ack
-    // so endNightStep doesn't crash on the auto-default. Each will get a
-    // dedicated case in its phase.
+    // Daybreak DG-after-real-role sub-steps: defaults mirror the matching
+    // real role's auto-action so the DG behaves consistently when they
+    // don't submit in time.
     case "doppelganger_insomniac":
-    case "doppelganger_revealer":
-    case "doppelganger_curator":
       return { kind: "ack" };
+    case "doppelganger_revealer":
+      return { kind: "revealer_flip", targetId: null };
+    case "doppelganger_curator":
+      return { kind: "curator_place", targetId: null };
   }
 }
 
@@ -692,6 +704,65 @@ export function setupNightStep(room: Room, step: NightStep) {
       }
       return;
     }
+    case "doppelganger_insomniac": {
+      // DG-as-Insomniac wakes here (after the real Insomniac's step) and
+      // looks at their current physical card. Behaviour mirrors the real
+      // Insomniac setup, including the face-up reveal that stays through
+      // day/vote and the matching note.
+      for (const i of actors) {
+        const current = room.currentRoleOf(i.id);
+        i.knownCurrentRole = current;
+        i.cardFaceDown = false;
+        i.notes.push({ kind: "insomniac_self", role: current });
+        i.prompt = ack(
+          `You copied the Insomniac. Your card is: ${labelFor(current)}.`,
+        );
+        room.actionLog.push({ kind: "insomniac_saw", actorId: i.id, role: current });
+        room.nightPendingActors.add(i.id);
+      }
+      return;
+    }
+    case "doppelganger_revealer": {
+      // DG-as-Revealer flips another player's card (same mechanics as the
+      // real Revealer step — wolf/tanner cards re-hide; villager-team cards
+      // become a public reveal).
+      for (const r of actors) {
+        const eligible = room.players
+          .filter((p) => p.id !== r.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        r.prompt = {
+          kind: "revealer_choose",
+          message:
+            "You copied the Revealer. You may flip another player's card face up. If it's on the wolf or tanner team, it flips back face down.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(r.id);
+      }
+      return;
+    }
+    case "doppelganger_curator": {
+      // DG-as-Curator places an artifact, same as the real Curator, but the
+      // eligible list already excludes anyone the real Curator already gave
+      // a token to (no stacking artifacts).
+      for (const c of actors) {
+        const eligible = room.players
+          .filter(
+            (p) =>
+              !p.spectating &&
+              !!p.originalRole &&
+              !room.playerArtifacts.has(p.id),
+          )
+          .map((p) => p.id);
+        c.prompt = {
+          kind: "curator_choose",
+          message:
+            "You copied the Curator. Place an artifact on a player whose card doesn't already have one. You won't see which artifact landed.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(c.id);
+      }
+      return;
+    }
     case "insomniac": {
       for (const i of actors) {
         const current = room.currentRoleOf(i.id);
@@ -744,12 +815,16 @@ export function applyNightAction(
         (step === "werewolves" && effectiveActorsForRole(room, "werewolf").length >= 2 && isEffective(player, "werewolf")) ||
         (step === "minion" && isEffective(player, "minion")) ||
         (step === "masons" && isEffective(player, "mason")) ||
-        (step === "insomniac" && isEffective(player, "insomniac"));
+        (step === "insomniac" && isEffective(player, "insomniac")) ||
+        // Daybreak DG-as-Insomniac sub-step also accepts ack.
+        (step === "doppelganger_insomniac" &&
+          player.originalRole === "doppelganger" &&
+          player.doppelgangerCopied === "insomniac");
       return validAck ? { ok: true } : { ok: false, error: "Ack not valid here" };
     }
 
     case "sentinel_shield": {
-      if (step !== "sentinel" || original !== "sentinel") {
+      if (!canActAs(player, "sentinel", step)) {
         return { ok: false, error: "Not sentinel step" };
       }
       if (action.targetId === null) {
@@ -946,7 +1021,7 @@ export function applyNightAction(
     }
 
     case "apprentice_seer_view": {
-      if (step !== "apprentice_seer" || original !== "apprentice_seer") {
+      if (!canActAs(player, "apprentice_seer", step)) {
         return { ok: false, error: "Not apprentice seer step" };
       }
       if (action.centerIndex === null) {
@@ -976,7 +1051,7 @@ export function applyNightAction(
     }
 
     case "pi_stop": {
-      if (step !== "paranormal_investigator" || original !== "paranormal_investigator") {
+      if (!canActAs(player, "paranormal_investigator", step)) {
         return { ok: false, error: "Not P.I. step" };
       }
       player.piPicksRemaining = 0;
@@ -984,7 +1059,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "pi_view": {
-      if (step !== "paranormal_investigator" || original !== "paranormal_investigator") {
+      if (!canActAs(player, "paranormal_investigator", step)) {
         return { ok: false, error: "Not P.I. step" };
       }
       if ((player.piPicksRemaining ?? 0) <= 0) {
@@ -1054,7 +1129,7 @@ export function applyNightAction(
     }
 
     case "witch_peek_center": {
-      if (step !== "witch" || original !== "witch") {
+      if (!canActAs(player, "witch", step)) {
         return { ok: false, error: "Not witch step" };
       }
       if (action.centerIndex === null) {
@@ -1087,7 +1162,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "witch_swap": {
-      if (step !== "witch" || original !== "witch") {
+      if (!canActAs(player, "witch", step)) {
         return { ok: false, error: "Not witch step" };
       }
       const centerIndex = player.witchPeekedCenterIndex;
@@ -1122,7 +1197,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "revealer_flip": {
-      if (step !== "revealer" || original !== "revealer") {
+      if (!canActAs(player, "revealer", step)) {
         return { ok: false, error: "Not revealer step" };
       }
       if (action.targetId === null) {
@@ -1180,7 +1255,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "curator_place": {
-      if (step !== "curator" || original !== "curator") {
+      if (!canActAs(player, "curator", step)) {
         return { ok: false, error: "Not curator step" };
       }
       if (action.targetId === null) {
@@ -1228,7 +1303,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "village_idiot_rotate": {
-      if (step !== "village_idiot" || original !== "village_idiot") {
+      if (!canActAs(player, "village_idiot", step)) {
         return { ok: false, error: "Not village idiot step" };
       }
       if (action.direction === null) {
@@ -1375,7 +1450,8 @@ function isEffective(player: ServerPlayer, role: Role): boolean {
   if (
     player.originalRole === "doppelganger" &&
     player.doppelgangerCopied === role &&
-    !isDgActRole(role)
+    !isDgActRole(role) &&
+    !isDgAfterRole(role)
   ) {
     return true;
   }
@@ -1399,8 +1475,32 @@ function canActAs(player: ServerPlayer, role: Role, step: NightStep | undefined)
   if (step === "doppelganger_act") {
     return player.originalRole === "doppelganger" && player.doppelgangerCopied === role;
   }
+  // Daybreak — DG copies of Insomniac / Revealer / Curator act in their
+  // own after-real-role sub-step. The same action kinds are used (just
+  // submitted from the DG sub-step).
+  if (step === "doppelganger_insomniac") {
+    return (
+      role === "insomniac" &&
+      player.originalRole === "doppelganger" &&
+      player.doppelgangerCopied === "insomniac"
+    );
+  }
+  if (step === "doppelganger_revealer") {
+    return (
+      role === "revealer" &&
+      player.originalRole === "doppelganger" &&
+      player.doppelgangerCopied === "revealer"
+    );
+  }
+  if (step === "doppelganger_curator") {
+    return (
+      role === "curator" &&
+      player.originalRole === "doppelganger" &&
+      player.doppelgangerCopied === "curator"
+    );
+  }
   // Real-role step: only an actual holder of that role wakes (DG copies of
-  // these four roles are filtered out by isEffective).
+  // DG_ACT and DG_AFTER roles are filtered out by isEffective).
   const expected: NightStep =
     role === "werewolf" ? "werewolves" : role === "mason" ? "masons" : (role as NightStep);
   return step === expected && isEffective(player, role);
@@ -1420,6 +1520,29 @@ function effectiveActorsForStep(room: Room, step: NightStep): ServerPlayer[] {
       (p) =>
         p.originalRole === "doppelganger" &&
         isDgActRole(p.doppelgangerCopied),
+    );
+  }
+  // Daybreak — DG sub-steps that fire AFTER the real role closes its eyes.
+  // Each step is the DG who copied that specific role.
+  if (step === "doppelganger_insomniac") {
+    return room.players.filter(
+      (p) =>
+        p.originalRole === "doppelganger" &&
+        p.doppelgangerCopied === "insomniac",
+    );
+  }
+  if (step === "doppelganger_revealer") {
+    return room.players.filter(
+      (p) =>
+        p.originalRole === "doppelganger" &&
+        p.doppelgangerCopied === "revealer",
+    );
+  }
+  if (step === "doppelganger_curator") {
+    return room.players.filter(
+      (p) =>
+        p.originalRole === "doppelganger" &&
+        p.doppelgangerCopied === "curator",
     );
   }
   // Werewolves step: all awake wolves (Werewolf/Alpha/Mystic + DG copies of
@@ -1484,6 +1607,107 @@ function setupDoppelgangerAct(room: Room) {
         };
         room.nightPendingActors.add(dg.id);
         break;
+      case "sentinel": {
+        const eligible = room.players
+          .filter((p) => p.id !== dg.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "sentinel_choose",
+          message:
+            "You copied the Sentinel. Place a shield token on another player's card.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "alpha_wolf": {
+        const hasHorizontal = room.horizontalCenterIndex !== undefined;
+        const eligible = room.players
+          .filter(
+            (p) =>
+              !p.spectating &&
+              !!p.originalRole &&
+              !isAwakeWolf(p) &&
+              !isDreamWolfRole(p),
+          )
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "alpha_wolf_choose",
+          message: hasHorizontal
+            ? "You copied the Alpha Wolf. Swap the centre wolf card with any non-wolf player's card."
+            : "You copied the Alpha Wolf. No centre wolf card exists — you may only skip.",
+          eligiblePlayerIds: eligible,
+          hasCenterWolf: hasHorizontal,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "mystic_wolf": {
+        const eligible = room.players
+          .filter((p) => p.id !== dg.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "mystic_wolf_choose",
+          message:
+            "You copied the Mystic Wolf. You may look at one other player's card.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "apprentice_seer":
+        dg.prompt = {
+          kind: "apprentice_seer_choose",
+          message:
+            "You copied the Apprentice Seer. You may look at one of the centre cards.",
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      case "paranormal_investigator": {
+        const eligible = room.players
+          .filter((p) => p.id !== dg.id && !p.spectating && !!p.originalRole)
+          .map((p) => p.id);
+        dg.piPicksRemaining = 2;
+        dg.prompt = {
+          kind: "paranormal_investigator_choose",
+          message:
+            "You copied the P.I. Look at up to two players' cards. Stop if you see a Werewolf, Minion or Tanner — you'll become that team.",
+          eligiblePlayerIds: eligible,
+          picksRemaining: 2,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "witch":
+        dg.witchPeekedCenterIndex = undefined;
+        dg.prompt = {
+          kind: "witch_choose",
+          message:
+            "You copied the Witch. You may peek one centre card. If you do, you must swap it with any player's card (including yourself).",
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      case "village_idiot": {
+        const affected = room.players
+          .filter(
+            (p) =>
+              p.id !== dg.id &&
+              !p.spectating &&
+              !!p.originalRole &&
+              !room.shieldedPlayerIds.has(p.id),
+          )
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "village_idiot_choose",
+          message:
+            affected.length < 2
+              ? "You copied the Village Idiot. Not enough other players to rotate."
+              : "You copied the Village Idiot. Rotate everyone else's card one seat left or right.",
+          affectedPlayerIds: affected,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
       default:
         break;
     }
