@@ -149,13 +149,28 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           swapped it into <PlayerChip id={n.targetId} room={room} />'s hand.
         </>
       );
-    case "village_idiot_rotated":
+    case "village_idiot_rotated": {
+      // Right rotation walks the seating order forward; left rotation walks
+      // it backward. Either way the chain is circular — append the first
+      // name at the end so the loop is obvious.
+      const ordered =
+        n.direction === "right"
+          ? n.playerIds
+          : [...n.playerIds].reverse();
+      const chain = ordered.length > 0 ? [...ordered, ordered[0]] : [];
       return (
         <>
           You rotated cards {n.direction === "left" ? "left" : "right"}:{" "}
-          <PlayerList ids={n.playerIds} room={room} />.
+          {chain.map((id, i) => (
+            <span key={`${id}-${i}`}>
+              {i > 0 && " → "}
+              <PlayerChip id={id} room={room} />
+            </span>
+          ))}
+          .
         </>
       );
+    }
     case "dream_wolf_seen":
       return <>You stayed asleep — the wolves can see you.</>;
     case "dream_wolves_in_play":

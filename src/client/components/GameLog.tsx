@@ -204,14 +204,17 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
           chose not to peek.
         </>
       );
-    case "village_idiot_rotated":
+    case "village_idiot_rotated": {
+      const ordered =
+        e.direction === "right" ? e.playerIds : [...e.playerIds].reverse();
+      const chain = ordered.length > 0 ? [...ordered, ordered[0]] : [];
       return (
         <>
           <PlayerChip id={e.actorId} room={room} /> (
           <RoleChip role="village_idiot" />) rotated cards{" "}
           {e.direction === "left" ? "left" : "right"}:{" "}
-          {e.playerIds.map((id, i) => (
-            <span key={id}>
+          {chain.map((id, i) => (
+            <span key={`${id}-${i}`}>
               {i > 0 && " → "}
               <PlayerChip id={id} room={room} />
             </span>
@@ -219,6 +222,7 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
           .
         </>
       );
+    }
     case "village_idiot_skipped":
       return (
         <>

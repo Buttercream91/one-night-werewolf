@@ -250,8 +250,12 @@ function describeNote(n: NightNote, room: PublicRoom): string {
         : `Investigated ${nameOf(n.targetId)} — ${label(n.role)}.`;
     case "witch_swapped":
       return `Witched centre #${n.centerIndex + 1} (${label(n.peekedRole)}) into ${nameOf(n.targetId)}.`;
-    case "village_idiot_rotated":
-      return `Rotated ${n.direction}: ${n.playerIds.map(nameOf).join(" → ")}.`;
+    case "village_idiot_rotated": {
+      const ordered =
+        n.direction === "right" ? n.playerIds : [...n.playerIds].reverse();
+      const chain = ordered.length > 0 ? [...ordered, ordered[0]] : [];
+      return `Rotated ${n.direction}: ${chain.map(nameOf).join(" → ")}.`;
+    }
     case "dream_wolf_seen":
       return "Dream Wolf — stayed asleep.";
     case "dream_wolves_in_play":
