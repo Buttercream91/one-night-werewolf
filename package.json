@@ -11,7 +11,9 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "voice:gen": "tsx scripts/generate-voice.ts",
-    "test:multiplayer": "tsx scripts/test-game.ts"
+    "test:multiplayer": "tsx scripts/test-game.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -34,6 +36,7 @@
     "tailwindcss": "^3.4.4",
     "tsx": "^4.15.7",
     "typescript": "^5.4.5",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "vitest": "^1.6.1"
   }
 }

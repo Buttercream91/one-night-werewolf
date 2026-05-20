@@ -341,7 +341,16 @@ export function setupNightStep(room: Room, step: NightStep) {
         // they can see it during day/vote (the whole point of the role).
         i.cardFaceDown = false;
         i.notes.push({ kind: "insomniac_self", role: current });
-        i.prompt = ack(`You are the Insomniac. Your card is now: ${labelFor(current)}.`);
+        // Phrasing differs for the real Insomniac (who's checking whether
+        // they got swapped during the night — hence "now") vs a DG who
+        // copied the Insomniac (whose physical card is still the Doppelganger
+        // unless something swapped them — "now" would be misleading).
+        const isDopplegangerCopy = i.originalRole === "doppelganger";
+        i.prompt = ack(
+          isDopplegangerCopy
+            ? `You copied the Insomniac. Your card is: ${labelFor(current)}.`
+            : `You are the Insomniac. Your card is now: ${labelFor(current)}.`,
+        );
         room.actionLog.push({ kind: "insomniac_saw", actorId: i.id, role: current });
         room.nightPendingActors.add(i.id);
       }

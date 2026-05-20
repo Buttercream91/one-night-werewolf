@@ -1,110 +1,270 @@
+import type { ReactNode } from "react";
 import type { ActionLogEntry, PublicRoom } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
-import { playerColor } from "../playerColor.js";
+import { PlayerChip, PlayerList, RoleChip } from "./Chips.js";
 
 interface Props {
   room: PublicRoom;
 }
 
-// Chronological narrative of the night and vote, shown only at reveal.
+// Phase buckets the action log gets grouped into so the timeline reads as a
+// story (Night → Vote → Resolution) instead of a flat dump. Order matches
+// the order events actually occur in.
+type Phase = "night" | "vote" | "resolution";
+const PHASE_TITLE: Record<Phase, string> = {
+  night: "Night",
+  vote: "Vote",
+  resolution: "Resolution",
+};
+
+// Chronological narrative of the night and vote, shown only at reveal. Each
+// entry is rendered with role chips + coloured player names so the table can
+// reconstruct what happened at a glance.
 export function GameLog({ room }: Props) {
   const log = room.actionLog ?? [];
-
   if (log.length === 0) return null;
+
+  const groups: Record<Phase, ActionLogEntry[]> = {
+    night: [],
+    vote: [],
+    resolution: [],
+  };
+  for (const entry of log) groups[phaseOf(entry)].push(entry);
 
   return (
     <div className="panel">
-      <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">Game log</h3>
-      <ol className="space-y-1.5 text-sm">
-        {log.map((entry, i) => {
-          const actorId = actorIdOf(entry);
-          const colorCls = actorId ? playerColor(actorId, room.players) : "text-slate-200";
-          return (
-            <li key={i} className="flex items-start gap-2">
-              <span className="mt-1.5 inline-block h-1 w-1 rounded-full bg-slate-500 shrink-0" />
-              <span className={colorCls}>{describeEntry(entry, room)}</span>
-            </li>
-          );
-        })}
-      </ol>
+      <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-4">
+        Night recap
+      </h3>
+      <div className="space-y-5">
+        {(Object.keys(groups) as Phase[]).map((phase) =>
+          groups[phase].length === 0 ? null : (
+            <section key={phase}>
+              <div className="text-xs uppercase tracking-wider text-indigo-300 mb-2">
+                {PHASE_TITLE[phase]}
+              </div>
+              <ol className="relative border-l border-slate-800 ml-2 space-y-2.5 pl-4">
+                {groups[phase].map((entry, i) => (
+                  <li key={i} className="relative">
+                    <span
+                      className={`absolute -left-[1.32rem] top-1.5 inline-block h-2 w-2 rounded-full ${dotColor(entry)}`}
+                    />
+                    <div className="text-sm leading-relaxed text-slate-200">
+                      {renderEntry(entry, room)}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ),
+        )}
+      </div>
     </div>
   );
 }
 
-// The "actor" of a log entry — the player whose action the line describes.
-// Used to color the line with that player's display color. Returns undefined
-// for entries with no single actor (e.g. werewolves_revealed, killed).
-function actorIdOf(e: ActionLogEntry): string | undefined {
+// Group each entry into the phase it happened in. The vote phase covers
+// individual votes; the resolution phase covers kills + the no-one-died line.
+function phaseOf(e: ActionLogEntry): Phase {
   switch (e.kind) {
-    case "doppelganger_copied":
-    case "lone_wolf_peeked":
-    case "lone_wolf_skipped":
-    case "minion_saw_werewolves":
-    case "lone_mason":
-    case "seer_saw_player":
-    case "seer_saw_center":
-    case "seer_skipped":
-    case "robber_swapped":
-    case "robber_skipped":
-    case "troublemaker_swapped":
-    case "troublemaker_skipped":
-    case "drunk_swapped":
-    case "insomniac_saw":
-      return e.actorId;
     case "vote":
-      return e.voterId;
-    case "werewolves_revealed":
-    case "masons_revealed":
+      return "vote";
     case "killed":
     case "no_one_died":
-      return undefined;
+      return "resolution";
+    default:
+      return "night";
   }
 }
 
-function describeEntry(e: ActionLogEntry, room: PublicRoom): string {
-  const nameOf = (id: string) => room.players.find((p) => p.id === id)?.name ?? "?";
+// Marker dot colour — green for wolves/info reveals, amber for swaps,
+// rose for kills, slate for everything else. Helps the eye scan quickly.
+function dotColor(e: ActionLogEntry): string {
+  switch (e.kind) {
+    case "killed":
+      return "bg-rose-400";
+    case "no_one_died":
+      return "bg-slate-500";
+    case "vote":
+      return "bg-sky-400";
+    case "doppelganger_copied":
+    case "robber_swapped":
+    case "troublemaker_swapped":
+    case "drunk_swapped":
+      return "bg-amber-400";
+    case "werewolves_revealed":
+    case "masons_revealed":
+    case "minion_saw_werewolves":
+      return "bg-rose-400";
+    default:
+      return "bg-emerald-400";
+  }
+}
+
+// Render a single timeline entry with chips inline. Each render returns JSX
+// so chips can be styled per-role / per-player rather than baked into a
+// flat string.
+function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
   switch (e.kind) {
     case "doppelganger_copied":
-      return `${nameOf(e.actorId)} (Doppelganger) copied ${nameOf(e.targetId)} and became ${ROLE_META[e.copiedRole].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="doppelganger" />)
+          copied <PlayerChip id={e.targetId} room={room} /> and became{" "}
+          <RoleChip role={e.copiedRole} />.
+        </>
+      );
     case "werewolves_revealed":
-      return `Werewolves saw each other: ${e.actorIds.map(nameOf).join(", ")}.`;
+      return (
+        <>
+          Werewolves saw each other: <PlayerList ids={e.actorIds} room={room} />.
+        </>
+      );
     case "lone_wolf_peeked":
-      return `${nameOf(e.actorId)} (lone Werewolf) peeked center ${e.centerIndex + 1} — ${ROLE_META[e.role].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (lone <RoleChip role="werewolf" />)
+          peeked centre #{e.centerIndex + 1} — <RoleChip role={e.role} />.
+        </>
+      );
     case "lone_wolf_skipped":
-      return `${nameOf(e.actorId)} (lone Werewolf) skipped the center peek.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (lone <RoleChip role="werewolf" />)
+          skipped the centre peek.
+        </>
+      );
     case "minion_saw_werewolves":
-      return e.werewolfIds.length === 0
-        ? `${nameOf(e.actorId)} (Minion) saw there were no Werewolves in play.`
-        : `${nameOf(e.actorId)} (Minion) saw the Werewolves: ${e.werewolfIds.map(nameOf).join(", ")}.`;
+      return e.werewolfIds.length === 0 ? (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="minion" />)
+          saw no Werewolves were in play.
+        </>
+      ) : (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="minion" />)
+          saw the wolves: <PlayerList ids={e.werewolfIds} room={room} />.
+        </>
+      );
     case "masons_revealed":
-      return `Masons saw each other: ${e.actorIds.map(nameOf).join(", ")}.`;
+      return (
+        <>
+          Masons saw each other: <PlayerList ids={e.actorIds} room={room} />.
+        </>
+      );
     case "lone_mason":
-      return `${nameOf(e.actorId)} (Mason) saw no other Mason was in play.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="mason" />)
+          saw no other Mason was in play.
+        </>
+      );
     case "seer_saw_player":
-      return `${nameOf(e.actorId)} (Seer) looked at ${nameOf(e.targetId)}'s card — ${ROLE_META[e.role].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="seer" />)
+          looked at <PlayerChip id={e.targetId} room={room} />'s card —{" "}
+          <RoleChip role={e.role} />.
+        </>
+      );
     case "seer_saw_center":
-      return `${nameOf(e.actorId)} (Seer) peeked center ${e.cards.map((c) => `#${c.index + 1} ${ROLE_META[c.role].label}`).join(" and ")}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="seer" />)
+          peeked centre{" "}
+          {e.cards.map((c, i) => (
+            <span key={c.index}>
+              {i > 0 && " and "}#{c.index + 1} <RoleChip role={c.role} />
+            </span>
+          ))}
+          .
+        </>
+      );
     case "seer_skipped":
-      return `${nameOf(e.actorId)} (Seer) chose not to look.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="seer" />)
+          chose not to look.
+        </>
+      );
     case "robber_swapped":
-      return `${nameOf(e.actorId)} (Robber) stole ${nameOf(e.targetId)}'s card and became ${ROLE_META[e.newRole].label}. ${nameOf(e.targetId)} is now the ${ROLE_META[e.targetNewRole].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="robber" />)
+          stole <PlayerChip id={e.targetId} room={room} />'s card and became{" "}
+          <RoleChip role={e.newRole} />.{" "}
+          <PlayerChip id={e.targetId} room={room} /> is now the{" "}
+          <RoleChip role={e.targetNewRole} />.
+        </>
+      );
     case "robber_skipped":
-      return `${nameOf(e.actorId)} (Robber) chose not to steal.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="robber" />)
+          chose not to steal.
+        </>
+      );
     case "troublemaker_swapped":
-      return `${nameOf(e.actorId)} (Troublemaker) swapped the cards of ${nameOf(e.targetIds[0])} and ${nameOf(e.targetIds[1])}. ${nameOf(e.targetIds[0])} is now the ${ROLE_META[e.newRoles[0]].label} and ${nameOf(e.targetIds[1])} is now the ${ROLE_META[e.newRoles[1]].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="troublemaker" />)
+          swapped the cards of <PlayerChip id={e.targetIds[0]} room={room} /> and{" "}
+          <PlayerChip id={e.targetIds[1]} room={room} />.{" "}
+          <PlayerChip id={e.targetIds[0]} room={room} /> is now the{" "}
+          <RoleChip role={e.newRoles[0]} /> and{" "}
+          <PlayerChip id={e.targetIds[1]} room={room} /> is now the{" "}
+          <RoleChip role={e.newRoles[1]} />.
+        </>
+      );
     case "troublemaker_skipped":
-      return `${nameOf(e.actorId)} (Troublemaker) didn't swap anyone.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="troublemaker" />)
+          didn't swap anyone.
+        </>
+      );
     case "drunk_swapped":
-      return `${nameOf(e.actorId)} (Drunk) traded their card with center ${e.centerIndex + 1} (without looking).`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="drunk" />)
+          traded their card with centre #{e.centerIndex + 1} (without looking).
+        </>
+      );
     case "insomniac_saw":
-      return `${nameOf(e.actorId)} (Insomniac) checked their card — ${ROLE_META[e.role].label}.`;
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="insomniac" />)
+          checked their card — <RoleChip role={e.role} />.
+        </>
+      );
     case "vote":
-      return `${nameOf(e.voterId)} voted for ${e.targetId === "no_kill" ? "no one" : nameOf(e.targetId)}.`;
+      return (
+        <>
+          <PlayerChip id={e.voterId} room={room} /> voted for{" "}
+          {e.targetId === "no_kill" ? (
+            <span className="italic text-slate-400">no one</span>
+          ) : (
+            <PlayerChip id={e.targetId} room={room} />
+          )}
+          .
+        </>
+      );
     case "killed":
-      return e.via === "hunter"
-        ? `${nameOf(e.targetId)} was killed by the Hunter's last vote.`
-        : `${nameOf(e.targetId)} was killed by the village vote.`;
+      return e.via === "hunter" ? (
+        <>
+          <PlayerChip id={e.targetId} room={room} /> was killed by the{" "}
+          <RoleChip role="hunter" />
+          's last vote.
+        </>
+      ) : (
+        <>
+          <PlayerChip id={e.targetId} room={room} /> was killed by the village vote.
+        </>
+      );
     case "no_one_died":
-      return "Nobody received enough votes — no one was killed.";
+      return (
+        <span className="italic text-slate-400">
+          Nobody received enough votes — no one was killed.
+        </span>
+      );
   }
 }

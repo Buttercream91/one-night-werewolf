@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { useState } from "react";
-import type { PrivateView, PublicRoom } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
+import type { NightNote, PrivateView, PublicRoom } from "../../shared/types.js";
 import { send } from "../socket.js";
+import { PlayerChip, PlayerList, RoleChip } from "./Chips.js";
 
 interface Props {
   me: PrivateView;
@@ -16,10 +17,6 @@ interface Props {
 // reconnects and stay through day → vote → reveal.
 export function NotesPanel({ me, room, allowAdding = true, className = "" }: Props) {
   const [draft, setDraft] = useState("");
-
-  function nameOf(id: string) {
-    return room.players.find((p) => p.id === id)?.name ?? "?";
-  }
 
   function add() {
     const text = draft.trim();
@@ -40,8 +37,10 @@ export function NotesPanel({ me, room, allowAdding = true, className = "" }: Pro
         <ul className="space-y-1.5 text-sm text-slate-200">
           {me.notes.map((n, i) => (
             <li key={`auto-${i}`} className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-indigo-400" />
-              <span>{describeNote(n, nameOf)}</span>
+              <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-indigo-400" />
+              <span className="flex-1 leading-relaxed">
+                {renderNote(n, room)}
+              </span>
             </li>
           ))}
         </ul>
@@ -51,7 +50,7 @@ export function NotesPanel({ me, room, allowAdding = true, className = "" }: Pro
         <ul className={`space-y-1.5 text-sm text-slate-200 ${hasAuto ? "mt-2 pt-2 border-t border-slate-800" : ""}`}>
           {me.userNotes.map((text, i) => (
             <li key={`user-${i}`} className="flex items-start gap-2 group">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+              <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
               <span className="flex-1">{text}</span>
               {allowAdding && (
                 <button
@@ -89,37 +88,95 @@ export function NotesPanel({ me, room, allowAdding = true, className = "" }: Pro
   );
 }
 
-function describeNote(n: PrivateView["notes"][number], nameOf: (id: string) => string): string {
+// Build the rendered note for a single auto-note. Uses inline role chips and
+// coloured player names instead of the older plain-text describe() output.
+function renderNote(n: NightNote, room: PublicRoom): ReactNode {
   switch (n.kind) {
     case "starting_role":
-      return `You are the ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          You are the <RoleChip role={n.role} />.
+        </>
+      );
     case "doppelganger_copied":
-      return `You copied ${nameOf(n.targetId)} and became ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          You copied <PlayerChip id={n.targetId} room={room} /> and became{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
     case "fellow_werewolves":
-      return `Other werewolves: ${n.playerIds.map(nameOf).join(", ") || "(none)"}.`;
+      return (
+        <>
+          Other werewolves: <PlayerList ids={n.playerIds} room={room} />.
+        </>
+      );
     case "lone_wolf_center":
-      return `You peeked center card ${n.index + 1}: ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          You peeked centre card {n.index + 1}: <RoleChip role={n.role} />.
+        </>
+      );
     case "minion_sees_werewolves":
-      return n.playerIds.length === 0
-        ? "There are no Werewolves in play."
-        : `Werewolves: ${n.playerIds.map(nameOf).join(", ")}.`;
+      return n.playerIds.length === 0 ? (
+        <>There are no Werewolves in play.</>
+      ) : (
+        <>
+          Werewolves: <PlayerList ids={n.playerIds} room={room} />.
+        </>
+      );
     case "fellow_mason":
-      return `Other Masons: ${n.playerIds.map(nameOf).join(", ")}.`;
+      return (
+        <>
+          Other Masons: <PlayerList ids={n.playerIds} room={room} />.
+        </>
+      );
     case "no_other_masons":
-      return "There is no other Mason in play.";
+      return <>There is no other Mason in play.</>;
     case "seer_player":
-      return `${nameOf(n.playerId)}'s card is ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          <PlayerChip id={n.playerId} room={room} />'s card is{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
     case "seer_center":
-      return `Center cards — ${n.cards
-        .map((c) => `${c.index + 1}: ${ROLE_META[c.role].label}`)
-        .join("; ")}.`;
+      return (
+        <>
+          Centre cards —{" "}
+          {n.cards.map((c, i) => (
+            <span key={c.index}>
+              {i > 0 && "; "}#{c.index + 1}: <RoleChip role={c.role} />
+            </span>
+          ))}
+          .
+        </>
+      );
     case "robber_new_role":
-      return `You robbed ${nameOf(n.targetId)} and now hold ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          You robbed <PlayerChip id={n.targetId} room={room} /> and now hold{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
     case "troublemaker_swapped":
-      return `You swapped the cards of ${nameOf(n.targetIds[0])} and ${nameOf(n.targetIds[1])}.`;
+      return (
+        <>
+          You swapped the cards of <PlayerChip id={n.targetIds[0]} room={room} /> and{" "}
+          <PlayerChip id={n.targetIds[1]} room={room} />.
+        </>
+      );
     case "drunk_swapped":
-      return `You took centre card #${n.centerIndex + 1} (you didn't see it).`;
+      return (
+        <>
+          You took centre card #{n.centerIndex + 1} (you didn't see it).
+        </>
+      );
     case "insomniac_self":
-      return `Your card is now ${ROLE_META[n.role].label}.`;
+      return (
+        <>
+          Your card is now <RoleChip role={n.role} />.
+        </>
+      );
   }
 }

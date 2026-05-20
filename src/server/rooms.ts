@@ -5,7 +5,6 @@ import type {
   ActionLogEntry,
   ChatMessage,
   ClientToServer,
-  DevVision,
   NightAction,
   NightNote,
   NightPrompt,
@@ -19,6 +18,10 @@ import type {
 } from "../shared/types.js";
 import { NIGHT_ORDER, PLAYER_COLOR_IDS, ROLE_META } from "../shared/types.js";
 import {
+  pickNextPriorityToAdd,
+  pickNextPriorityToRemoveIdx,
+} from "./lobby-deck.js";
+import {
   applyNightAction,
   defaultActionFor,
   isStepInPlay,
@@ -26,6 +29,7 @@ import {
   STEP_SECONDS,
   stepFilesFor,
 } from "./night.js";
+import { privateViewFor, toPublicRoom } from "./room-view.js";
 import { resolveVotes } from "./vote.js";
 
 const newCode = customAlphabet("BCDFGHJKLMNPQRSTVWXYZ", 4);
@@ -719,133 +723,15 @@ export class Room {
   }
 
   // ---- Public state ----
+  // Data-shaping for socket broadcasts lives in room-view.ts so the Room
+  // class stays focused on game state + transitions.
 
   toPublicRoom(): PublicRoom {
-    const isReveal = this.phase === "reveal";
-    const isVoting = this.phase === "vote";
-    return {
-      code: this.joinCode,
-      name: this.roomName,
-      phase: this.phase,
-      serverNow: Date.now(),
-      chatMessages: this.phase === "lobby" ? this.chatMessages : undefined,
-      spectatorsMuted: this.spectatorsMuted || undefined,
-      privateRoom: this.privateRoom || undefined,
-      spectatorsAutoLock: this.spectatorsAutoLock || undefined,
-      mutedExceptHost: this.mutedExceptHost || undefined,
-      spectatorsBlind: this.spectatorsBlind || undefined,
-      removeCardLimit: this.removeCardLimit || undefined,
-      centerCardCount: this.phase !== "lobby" ? this.centerCards.length : undefined,
-      devMode: this.devMode || undefined,
-      devSpeedMultiplier: this.devSpeedMultiplier !== 1 ? this.devSpeedMultiplier : undefined,
-      players: this.players.map((p) => ({
-        id: p.id,
-        name: p.name,
-        connected: p.connected,
-        isHost: p.id === this.hostId,
-        spectating: p.spectating || undefined,
-        forcedSpectating: p.forcedSpectating || undefined,
-        hasMic: p.hasMic || undefined,
-        color: p.color,
-        bot: p.bot || undefined,
-        originalRole: isReveal ? p.originalRole : undefined,
-        finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
-        effectiveRole: isReveal && p.originalRole ? this.effectiveRoleOf(p.id) : undefined,
-        votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
-        killed: isReveal ? this.killedIds.includes(p.id) : undefined,
-      })),
-      selectedRoles: this.selectedRoles,
-      nightStep: this.nightStep,
-      nightStepEndsAt: this.nightStepEndsAt,
-      nightStepVoiceFiles: this.nightStepVoiceFiles,
-      nightIntroFlippedIds:
-        this.nightStep === "intro"
-          ? this.players
-              .filter(
-                (p) =>
-                  !p.spectating &&
-                  !!p.originalRole &&
-                  !p.bot &&
-                  p.connected &&
-                  !this.nightPendingActors.has(p.id),
-              )
-              .map((p) => p.id)
-          : undefined,
-      dayEndsAt: this.dayEndsAt,
-      daySeconds: this.daySeconds,
-      voteEndsAt: this.voteEndsAt,
-      readyPlayerIds: this.players.filter((p) => p.ready).map((p) => p.id),
-      paused: this.paused || undefined,
-      accusations:
-        this.phase === "day" || this.phase === "vote" || this.phase === "reveal"
-          ? this.accusations
-          : undefined,
-      lobbyReadyIds:
-        this.phase === "lobby"
-          ? this.players.filter((p) => p.lobbyReady).map((p) => p.id)
-          : undefined,
-      centerCards: isReveal ? this.centerCards : undefined,
-      winners: this.winners,
-      actionLog: isReveal ? this.actionLog : undefined,
-    };
+    return toPublicRoom(this);
   }
 
   privateViewFor(playerId: string): PrivateView {
-    const p = this.players.find((p) => p.id === playerId);
-    if (!p) return { myId: playerId, notes: [], userNotes: [] };
-    const view: PrivateView = {
-      myId: p.id,
-      myOriginalRole: p.originalRole,
-      myKnownCurrentRole: p.knownCurrentRole,
-      cardFaceDown: p.cardFaceDown,
-      notes: p.notes,
-      userNotes: p.userNotes,
-      prompt: p.prompt,
-    };
-    // Spectators see the full table while a round is in progress: every
-    // active player's current role + their personal notes, plus the centre.
-    // Suppressed entirely when the host has hidden game state from
-    // spectators (anti-cheat — stops a spectator from leaking to a player
-    // sitting next to them).
-    if (p.spectating && this.phase !== "lobby" && !this.spectatorsBlind) {
-      view.spectatorVision = {
-        players: this.players
-          .filter((q) => !q.spectating && q.originalRole != null)
-          .map((q) => ({
-            id: q.id,
-            currentRole: this.currentRoles.get(q.id) ?? q.originalRole!,
-            originalRole: q.originalRole!,
-            notes: q.notes,
-            userNotes: q.userNotes,
-          })),
-        centerCards: this.centerCards.slice(),
-      };
-    }
-    // Dev mode god-view for the host: every active player's live role +
-    // original role + notes, plus centre cards and the running action log.
-    // Lets the dev panel show the table state in real time during testing.
-    if (
-      this.devMode &&
-      this.hostId === playerId &&
-      this.phase !== "lobby"
-    ) {
-      const dev: DevVision = {
-        players: this.players
-          .filter((q) => !q.spectating && q.originalRole != null)
-          .map((q) => ({
-            id: q.id,
-            currentRole: this.currentRoles.get(q.id) ?? q.originalRole!,
-            originalRole: q.originalRole!,
-            notes: q.notes,
-            userNotes: q.userNotes,
-            bot: q.bot || undefined,
-          })),
-        centerCards: this.centerCards.slice(),
-        actionLog: this.actionLog.slice(),
-      };
-      view.devVision = dev;
-    }
-    return view;
+    return privateViewFor(this, playerId);
   }
 
   // Free-form text notes the player adds themselves (visible only to them).
@@ -1416,76 +1302,6 @@ export class Room {
 function nextNightStep(step: NightStep): NightStep | undefined {
   const i = NIGHT_ORDER.indexOf(step);
   return NIGHT_ORDER[i + 1];
-}
-
-// Order roles are auto-added to the deck as players join (and auto-removed in
-// reverse as players leave). Werewolf is the always-on seed (not in this
-// list). Masons are intentionally omitted — they must come in pairs and the
-// host manages them by hand. Multi-instance roles (extra Werewolf, Villagers)
-// appear at the slot where they would be added.
-const PRIORITY_LIST: Role[] = [
-  "seer",
-  "troublemaker",
-  "insomniac",
-  "robber",
-  "minion",
-  "tanner",
-  "werewolf", // 2nd werewolf (the seed is the 1st)
-  "doppelganger",
-  "drunk",
-  "hunter",
-  "villager",
-  "villager",
-  "villager",
-];
-
-// The 1st Werewolf is the seed — always in the deck, never removed by
-// auto-adjust. Treat it as if it were the slot before the priority list
-// so cumulative counts for werewolf line up with the deck reality.
-function seedCumulative(): Partial<Record<Role, number>> {
-  return { werewolf: 1 };
-}
-
-// Choose the next role to add when the deck needs to grow. Walk the priority
-// list left-to-right and return the first slot whose role appears in the
-// deck fewer times than its cumulative count up to that slot (seed Werewolf
-// counted). Returns null when every slot is already satisfied.
-function pickNextPriorityToAdd(deck: Role[]): Role | null {
-  const cumulative = seedCumulative();
-  for (const role of PRIORITY_LIST) {
-    cumulative[role] = (cumulative[role] ?? 0) + 1;
-    const inDeck = deck.filter((r) => r === role).length;
-    if (inDeck < cumulative[role]!) {
-      // Don't add if the deck would exceed the role's max count (defensive —
-      // PRIORITY_LIST already respects ROLE_META maxCount, but a manual
-      // pre-fill could have pushed e.g. Villagers above 3).
-      if (inDeck < ROLE_META[role].maxCount) return role;
-    }
-  }
-  return null;
-}
-
-// Choose the deck index to remove when the deck needs to shrink. Walk the
-// priority list right-to-left; the first slot whose role currently sits at
-// or above its cumulative count (seed Werewolf counted) is the one to drop.
-// Returns the deck index of the last instance of that role. Never returns
-// the seed Werewolf — the seed sits "before" the priority list so its slot
-// is unreachable by the reverse walk.
-function pickNextPriorityToRemoveIdx(deck: Role[]): number {
-  const cumulative = seedCumulative();
-  for (const role of PRIORITY_LIST) {
-    cumulative[role] = (cumulative[role] ?? 0) + 1;
-  }
-  for (let i = PRIORITY_LIST.length - 1; i >= 0; i--) {
-    const role = PRIORITY_LIST[i];
-    const required = cumulative[role]!;
-    const inDeck = deck.filter((r) => r === role).length;
-    if (inDeck >= required) {
-      return deck.lastIndexOf(role);
-    }
-    cumulative[role]! -= 1;
-  }
-  return -1;
 }
 
 // ---- Registry ----

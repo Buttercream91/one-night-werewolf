@@ -152,6 +152,11 @@ export function Lobby({ room, me }: Props) {
                 ▶
               </span>
               Roles in deck
+              <DeckStatusBadge
+                count={room.selectedRoles.length}
+                target={targetCount}
+                removeCardLimit={!!room.removeCardLimit}
+              />
               {room.removeCardLimit && (
                 <span className="ml-2 text-xs text-amber-400" title="Deck cap removed — extras populate the centre">
                   ∞ unlimited
@@ -707,6 +712,51 @@ function TeamPill({ team }: { team: "werewolf" | "villager" | "tanner" }) {
         ? "bg-amber-950 border-amber-800 text-amber-300"
         : "bg-emerald-950 border-emerald-800 text-emerald-300";
   return <span className={`text-xs rounded border px-1.5 py-0.5 ${cls}`}>{team}</span>;
+}
+
+// At-a-glance status next to the "Roles in deck" heading. Saves players from
+// scanning the description text to see whether the deck is the right size.
+function DeckStatusBadge({
+  count,
+  target,
+  removeCardLimit,
+}: {
+  count: number;
+  target: number;
+  removeCardLimit: boolean;
+}) {
+  const diff = count - target;
+  // With removeCardLimit, any count >= target is valid (extras land in the
+  // centre). Without it, only exact match works.
+  const ok = removeCardLimit ? count >= target : count === target;
+  if (ok) {
+    return (
+      <span
+        className="text-xs rounded border px-1.5 py-0.5 bg-emerald-950 border-emerald-800 text-emerald-300"
+        title="Deck size matches the player count"
+      >
+        ✓ {count}/{target}
+      </span>
+    );
+  }
+  if (diff < 0) {
+    return (
+      <span
+        className="text-xs rounded border px-1.5 py-0.5 bg-amber-950 border-amber-800 text-amber-300"
+        title={`Add ${-diff} more card${diff === -1 ? "" : "s"} to start`}
+      >
+        {count}/{target} (need {-diff})
+      </span>
+    );
+  }
+  return (
+    <span
+      className="text-xs rounded border px-1.5 py-0.5 bg-rose-950 border-rose-800 text-rose-300"
+      title={`Remove ${diff} card${diff === 1 ? "" : "s"} or enable the deck-size cap`}
+    >
+      {count}/{target} (+{diff} over)
+    </span>
+  );
 }
 
 // Pick a random deck whose total card count equals players + 3, respecting

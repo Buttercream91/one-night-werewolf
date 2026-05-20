@@ -48,6 +48,13 @@ export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
     }
   }
 
+  // Has this player ever seen any centre card (lone-wolf or seer)? If so,
+  // when their step ends we hide the peek — they may be wondering why the
+  // centre is suddenly blank, so we show a small hint pointing them at notes.
+  const hasPriorPeek = me.notes.some(
+    (n) => n.kind === "lone_wolf_center" || n.kind === "seer_center",
+  );
+  const noActivePeek = seenByIndex.size === 0;
   return (
     <div className="panel">
       <div className="flex items-center justify-between mb-3">
@@ -74,6 +81,11 @@ export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
           );
         })}
       </div>
+      {hasPriorPeek && noActivePeek && (
+        <p className="mt-3 text-center text-xs text-slate-500 italic">
+          Centre is hidden between role turns — check Your Notes for what you saw earlier.
+        </p>
+      )}
     </div>
   );
 }
