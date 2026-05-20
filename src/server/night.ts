@@ -94,7 +94,9 @@ export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
 // face down" — players need a beat to look at their dealt card.
 export const STEP_SECONDS: Record<NightStep, number> = {
   intro: 10,
-  doppelganger: 14, // ~6s audio + ~8s to pick a player
+  // Pick a player to copy only — the action-buffer that used to live here
+  // moved into doppelganger_act for those who copied an actionable role.
+  doppelganger: 6,
   doppelganger_act: 16, // dynamic intro + time to pick a target / centre card
   werewolves: 14,
   minion: 16,
