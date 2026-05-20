@@ -813,7 +813,11 @@ export function applyNightAction(
         return { ok: true };
       }
       const validAck =
-        (step === "werewolves" && effectiveActorsForRole(room, "werewolf").length >= 2 && isEffective(player, "werewolf")) ||
+        // Werewolves call — any awake wolf (real Werewolf, Alpha Wolf,
+        // Mystic Wolf, or DG copies of any) acknowledges the fellow-pack
+        // reveal. The lone wolf has a different prompt (werewolf_lone)
+        // and a different action, so they don't enter this path.
+        (step === "werewolves" && isAwakeWolf(player)) ||
         (step === "minion" && isEffective(player, "minion")) ||
         (step === "masons" && isEffective(player, "mason")) ||
         (step === "insomniac" && isEffective(player, "insomniac")) ||
