@@ -4,6 +4,7 @@ import type { PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/t
 import {
   ALL_ROLES,
   DAYBREAK_ROLES,
+  deckTargetSize,
   DEFAULT_VOICE_PACK,
   ROLE_META,
   VOICE_PACKS,
@@ -31,7 +32,7 @@ export function Lobby({ room, me }: Props) {
   );
   const activePlayers = room.players.filter((p) => !p.spectating);
   const spectators = room.players.filter((p) => p.spectating);
-  const targetCount = activePlayers.length + 3;
+  const targetCount = deckTargetSize(activePlayers.length, room.selectedRoles);
   const lobbyReadyIds = room.lobbyReadyIds ?? [];
   const nonHostActive = activePlayers.filter((p) => !p.isHost);
   const everyoneReady = nonHostActive.every((p) => lobbyReadyIds.includes(p.id));
@@ -926,7 +927,6 @@ function randomDeck(
   numPlayers: number,
   opts: { daybreak: boolean; wolfCap: number },
 ): Role[] {
-  const target = numPlayers + 3;
   const pool: Role[] = [];
   for (const role of ALL_ROLES) {
     // Skip Daybreak roles entirely when the expansion is off — the host
@@ -935,7 +935,23 @@ function randomDeck(
     for (let i = 0; i < ROLE_META[role].maxCount; i++) pool.push(role);
   }
   for (let attempt = 0; attempt < 30; attempt++) {
-    const shuffled = shuffle(pool.slice()).slice(0, target);
+    // Pick a tentative target first (without Alpha Wolf, just N+3). We
+    // shuffle, slice that many, and if Alpha Wolf landed in, the real target
+    // is N+4 — top up the slice with one extra random card from the pool.
+    let shuffled = shuffle(pool.slice()).slice(0, numPlayers + 3);
+    if (shuffled.includes("alpha_wolf")) {
+      // Find one extra card from the pool that isn't already maxed out in
+      // shuffled. Simplest: take the next card from the shuffled-but-unsliced
+      // pool that respects maxCount.
+      const more = shuffle(pool.slice());
+      for (const extra of more) {
+        const used = shuffled.filter((r) => r === extra).length;
+        if (used < ROLE_META[extra].maxCount) {
+          shuffled = [...shuffled, extra];
+          break;
+        }
+      }
+    }
     const hasMinion = shuffled.includes("minion");
     const hasWerewolf = shuffled.includes("werewolf");
     const masonCount = shuffled.filter((r) => r === "mason").length;
@@ -951,11 +967,13 @@ function randomDeck(
       return shuffled;
     }
   }
-  // Fallback: force a Werewolf into a fresh shuffle, drop a wolf if over the
-  // cap, and clear a lone Minion if no Werewolf made the final cut.
-  const fallback = shuffle(pool.slice()).slice(0, target);
-  if (!fallback.includes("werewolf")) {
-    fallback[0] = "werewolf";
+  // Fallback: force a Werewolf into a fresh shuffle of N+3 cards, then top
+  // up with +1 if Alpha Wolf is in. Clear a lone Minion if no Werewolf made
+  // the cut, and trim wolves over the cap.
+  let fallback = shuffle(pool.slice()).slice(0, numPlayers + 3);
+  if (!fallback.includes("werewolf")) fallback[0] = "werewolf";
+  if (fallback.includes("alpha_wolf")) {
+    fallback = [...fallback, "villager"];
   }
   if (fallback.includes("minion") && !fallback.includes("werewolf")) {
     fallback[fallback.indexOf("minion")] = "villager";

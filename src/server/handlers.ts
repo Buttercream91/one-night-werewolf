@@ -124,7 +124,12 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     const next = (roles ?? []).filter(isRole);
     // Enforce the always-on Werewolf invariant.
     if (!next.includes("werewolf")) next.unshift("werewolf");
+    // Detect whether Alpha Wolf was just toggled — the deck target size
+    // depends on it, so auto-adjust the deck to fill or trim the extra slot.
+    const oldHadAlpha = room.selectedRoles.includes("alpha_wolf");
+    const newHasAlpha = next.includes("alpha_wolf");
     room.selectedRoles = next;
+    if (oldHadAlpha !== newHasAlpha) room.autoAdjustDeck();
     room.broadcast();
   });
 

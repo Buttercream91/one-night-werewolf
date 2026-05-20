@@ -56,6 +56,20 @@ export const WOLF_ROLES: Role[] = [
   "dream_wolf",
 ];
 
+// Required deck size for a given player count. Normally N+3 (one per player
+// plus 3 centre cards). When Alpha Wolf is in the selected deck a 4th centre
+// slot is added at deal time (the horizontal "centre wolf" card the Alpha
+// Wolf swaps), so the host must pick N+4 cards. The extra card doesn't have
+// to be a wolf — the horizontal is drawn from the existing wolves in
+// selectedRoles at deal time, no duplicates.
+export function deckTargetSize(
+  activePlayerCount: number,
+  selectedRoles: Role[],
+): number {
+  const hasAlpha = selectedRoles.includes("alpha_wolf");
+  return activePlayerCount + 3 + (hasAlpha ? 1 : 0);
+}
+
 export type Phase = "lobby" | "night" | "day" | "vote" | "reveal";
 
 export interface PublicPlayer {
@@ -726,7 +740,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
     label: "Alpha Wolf",
     team: "werewolf",
     description:
-      "Wakes with the wolves. Then swaps the centre wolf card with another player's card, without looking at either. Adds a 4th centre card (a random wolf) when in the deck.",
+      "Wakes with the wolves. Then swaps the centre wolf card with another player's card, without looking at either. Selecting Alpha Wolf bumps the deck by +1 — one wolf from your selection is drawn as the horizontal 4th centre card.",
     maxCount: 1,
   },
   mystic_wolf: {

@@ -18,6 +18,7 @@ import type {
 } from "../shared/types.js";
 import {
   DAYBREAK_ROLES,
+  deckTargetSize,
   NIGHT_ORDER,
   PLAYER_COLOR_IDS,
   ROLE_META,
@@ -274,17 +275,21 @@ export class Room {
     const numPlayers = activePlayers.length;
     if (numPlayers < 3) return { ok: false, error: "Need at least 3 active players" };
     if (numPlayers > 10) return { ok: false, error: "Maximum 10 active players" };
+    // Target deck size: normally N+3, plus an extra slot when Alpha Wolf is
+    // selected (the horizontal centre wolf card is drawn from selectedRoles
+    // at deal time, so the host needs one extra pick to feed the deal).
+    const target = deckTargetSize(numPlayers, this.selectedRoles);
     if (this.removeCardLimit) {
-      if (this.selectedRoles.length < numPlayers + 3) {
+      if (this.selectedRoles.length < target) {
         return {
           ok: false,
-          error: `Need at least ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
+          error: `Need at least ${target} role cards (currently ${this.selectedRoles.length})`,
         };
       }
-    } else if (this.selectedRoles.length !== numPlayers + 3) {
+    } else if (this.selectedRoles.length !== target) {
       return {
         ok: false,
-        error: `Need exactly ${numPlayers + 3} role cards (currently ${this.selectedRoles.length})`,
+        error: `Need exactly ${target} role cards (currently ${this.selectedRoles.length})`,
       };
     }
     // Only non-host, non-bot active players need to ready up. forceStart can
@@ -342,15 +347,32 @@ export class Room {
       p.ready = false;
       p.lobbyReady = false;
     });
-    // Deal: honour manualRoles when provided (dev mode), otherwise random
-    // shuffle. Anything not explicitly assigned goes to the centre.
+    // Deal pipeline. We work on a mutable copy of selectedRoles, optionally
+    // pulling out one wolf for the Alpha Wolf horizontal slot, then either
+    // honouring manualRoles (dev mode) or doing a fresh shuffle for the
+    // remaining cards.
+    const working = this.selectedRoles.slice();
+    let horizontalCard: Role | undefined;
+    if (this.selectedRoles.includes("alpha_wolf")) {
+      // Multiset-weighted random pick of one wolf-team card from selectedRoles.
+      // Removed from `working` so it can't also be dealt — no duplicates.
+      const wolfIndexes = working
+        .map((r, i) => (WOLF_ROLES.includes(r) ? i : -1))
+        .filter((i) => i >= 0);
+      if (wolfIndexes.length > 0) {
+        const pickIdx =
+          wolfIndexes[Math.floor(Math.random() * wolfIndexes.length)];
+        horizontalCard = working[pickIdx];
+        working.splice(pickIdx, 1);
+      }
+    }
+
     let centerDeck: Role[];
     if (opts?.manualRoles) {
-      const remaining = this.selectedRoles.slice();
       function take(role: Role): boolean {
-        const i = remaining.indexOf(role);
+        const i = working.indexOf(role);
         if (i < 0) return false;
-        remaining.splice(i, 1);
+        working.splice(i, 1);
         return true;
       }
       for (const p of activePlayers) {
@@ -364,7 +386,7 @@ export class Room {
         }
         p.originalRole = assigned;
       }
-      const shuffled = shuffle(remaining);
+      const shuffled = shuffle(working);
       let cursor = 0;
       for (const p of activePlayers) {
         if (!p.originalRole) {
@@ -373,28 +395,18 @@ export class Room {
       }
       centerDeck = shuffled.slice(cursor);
     } else {
-      const deck = shuffle(this.selectedRoles.slice());
+      const deck = shuffle(working);
       activePlayers.forEach((p, i) => {
         p.originalRole = deck[i];
       });
-      // Default is exactly 3 (deck = N+3); when removeCardLimit was on the
+      // Default is exactly 3 (working = N+3); when removeCardLimit is on the
       // centre can be larger.
       centerDeck = deck.slice(numPlayers);
     }
     this.centerCards = centerDeck;
-    // Daybreak — when Alpha Wolf is in the deck, append an extra wolf card
-    // (the horizontal centre card the Alpha Wolf is meant to swap). Pool is
-    // every wolf-team card currently in selectedRoles, multiset-weighted so
-    // a deck with 2 Werewolves makes Werewolf twice as likely as a single
-    // Alpha/Mystic. Alpha Wolf itself is in the pool. Doesn't fire when
-    // Alpha Wolf isn't selected.
-    if (this.selectedRoles.includes("alpha_wolf")) {
-      const wolfPool = this.selectedRoles.filter((r) => WOLF_ROLES.includes(r));
-      if (wolfPool.length > 0) {
-        const horizontal = wolfPool[Math.floor(Math.random() * wolfPool.length)];
-        this.centerCards.push(horizontal);
-        this.horizontalCenterIndex = this.centerCards.length - 1;
-      }
+    if (horizontalCard !== undefined) {
+      this.centerCards.push(horizontalCard);
+      this.horizontalCenterIndex = this.centerCards.length - 1;
     } else {
       this.horizontalCenterIndex = undefined;
     }
@@ -843,10 +855,11 @@ export class Room {
   // anything else the user manually toggled lives outside this auto-managed
   // pool). With removeCardLimit on, we only ever grow (never shrink past
   // existing manual oversize). Lobby-only — never touches an active deal.
-  private autoAdjustDeck() {
+  autoAdjustDeck() {
     if (this.phase !== "lobby") return;
     const activeCount = this.players.filter((p) => !p.spectating).length;
-    const target = activeCount + 3;
+    // Alpha Wolf in the deck bumps the target by +1 (extra centre slot).
+    const target = deckTargetSize(activeCount, this.selectedRoles);
     let safety = 32;
     while (this.selectedRoles.length < target && safety-- > 0) {
       const role = pickNextPriorityToAdd(this.selectedRoles, {
