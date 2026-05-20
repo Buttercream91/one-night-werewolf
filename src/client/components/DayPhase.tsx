@@ -172,10 +172,14 @@ function DayPlayerTile({
                     🎴
                   </span>
                 )}
-                {muted && (
+                {/* Mute icon is private to the bearer — the muted player
+                    sees their own indicator so they know why their mic is
+                    off, but the rest of the table mustn't get a free hint
+                    that this player has the Mask artifact. */}
+                {muted && player.id === me.myId && (
                   <span
                     className="ml-1 text-rose-300"
-                    title="Silenced by an artifact"
+                    title="Silenced by the Mask of Muting"
                   >
                     🤐
                   </span>
