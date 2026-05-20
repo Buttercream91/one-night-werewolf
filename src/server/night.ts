@@ -282,6 +282,13 @@ export function defaultActionFor(
       return { kind: "alpha_wolf_swap", targetId: null };
     case "mystic_wolf":
       return { kind: "mystic_wolf_view", targetId: null };
+    case "apprentice_seer":
+      return { kind: "apprentice_seer_view", centerIndex: null };
+    case "paranormal_investigator":
+      // Auto-default: stop (don't peek). The PI's "look at second card" is
+      // an optional follow-up; defaulting to stop on the first prompt is the
+      // same as the player choosing not to investigate.
+      return { kind: "pi_stop" };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
@@ -290,8 +297,6 @@ export function defaultActionFor(
     // Daybreak roles that don't have logic wired yet — fall through to ack
     // so endNightStep doesn't crash on the auto-default. Each will get a
     // dedicated case in its phase.
-    case "apprentice_seer":
-    case "paranormal_investigator":
     case "witch":
     case "village_idiot":
     case "revealer":
@@ -533,6 +538,35 @@ export function setupNightStep(room: Room, step: NightStep) {
           message: "You are the Seer. Look at one other player's card OR two of the center cards.",
         };
         room.nightPendingActors.add(s.id);
+      }
+      return;
+    }
+    case "apprentice_seer": {
+      for (const a of actors) {
+        a.prompt = {
+          kind: "apprentice_seer_choose",
+          message: "You are the Apprentice Seer. You may look at one of the centre cards.",
+        };
+        room.nightPendingActors.add(a.id);
+      }
+      return;
+    }
+    case "paranormal_investigator": {
+      for (const p of actors) {
+        const eligible = room.players
+          .filter(
+            (q) => q.id !== p.id && !q.spectating && !!q.originalRole,
+          )
+          .map((q) => q.id);
+        p.piPicksRemaining = 2;
+        p.prompt = {
+          kind: "paranormal_investigator_choose",
+          message:
+            "You are the Paranormal Investigator. Look at up to two players' cards. Stop if you see a Werewolf, Minion or Tanner — you'll become that team.",
+          eligiblePlayerIds: eligible,
+          picksRemaining: 2,
+        };
+        room.nightPendingActors.add(p.id);
       }
       return;
     }
@@ -826,6 +860,114 @@ export function applyNightAction(
       ];
       player.notes.push({ kind: "seer_center", cards });
       room.actionLog.push({ kind: "seer_saw_center", actorId: player.id, cards });
+      return { ok: true };
+    }
+
+    case "apprentice_seer_view": {
+      if (step !== "apprentice_seer" || original !== "apprentice_seer") {
+        return { ok: false, error: "Not apprentice seer step" };
+      }
+      if (action.centerIndex === null) {
+        room.actionLog.push({ kind: "apprentice_seer_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      if (
+        !Number.isInteger(action.centerIndex) ||
+        action.centerIndex < 0 ||
+        action.centerIndex >= room.centerCards.length
+      ) {
+        return { ok: false, error: "Invalid center index" };
+      }
+      const role = room.centerCards[action.centerIndex];
+      player.notes.push({
+        kind: "apprentice_seer_center",
+        index: action.centerIndex,
+        role,
+      });
+      room.actionLog.push({
+        kind: "apprentice_seer_saw",
+        actorId: player.id,
+        centerIndex: action.centerIndex,
+        role,
+      });
+      return { ok: true };
+    }
+
+    case "pi_stop": {
+      if (step !== "paranormal_investigator" || original !== "paranormal_investigator") {
+        return { ok: false, error: "Not P.I. step" };
+      }
+      player.piPicksRemaining = 0;
+      room.actionLog.push({ kind: "pi_stopped", actorId: player.id });
+      return { ok: true };
+    }
+    case "pi_view": {
+      if (step !== "paranormal_investigator" || original !== "paranormal_investigator") {
+        return { ok: false, error: "Not P.I. step" };
+      }
+      if ((player.piPicksRemaining ?? 0) <= 0) {
+        return { ok: false, error: "No P.I. picks remaining" };
+      }
+      const target = room.players.find((q) => q.id === action.targetId);
+      if (!target || target.id === player.id || target.spectating) {
+        return { ok: false, error: "Invalid target" };
+      }
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      const role = room.currentRoleOf(target.id);
+      // Non-villager team locks the PI's team and ends the step. Daybreak
+      // rulebook: Werewolf / Minion / Tanner all flip the PI.
+      const lockTeams: Role[] = [
+        "werewolf",
+        "alpha_wolf",
+        "mystic_wolf",
+        "dream_wolf",
+        "minion",
+        "tanner",
+      ];
+      const teamLocked = lockTeams.includes(role);
+      player.notes.push({
+        kind: "pi_saw",
+        targetId: target.id,
+        role,
+        teamLocked,
+      });
+      room.actionLog.push({
+        kind: "pi_saw",
+        actorId: player.id,
+        targetId: target.id,
+        role,
+        teamLocked,
+      });
+      if (teamLocked) {
+        player.piTeamRole = role;
+        player.piPicksRemaining = 0;
+      } else {
+        player.piPicksRemaining = (player.piPicksRemaining ?? 1) - 1;
+        // If they still have a pick, refresh the prompt so the client knows
+        // the eligible list (excluding the already-viewed target).
+        if (player.piPicksRemaining > 0) {
+          const eligible = room.players
+            .filter(
+              (q) =>
+                q.id !== player.id &&
+                q.id !== target.id &&
+                !q.spectating &&
+                !!q.originalRole,
+            )
+            .map((q) => q.id);
+          player.prompt = {
+            kind: "paranormal_investigator_choose",
+            message:
+              "Look at one more player's card, or stop. If you see a Werewolf, Minion or Tanner, you become that team.",
+            eligiblePlayerIds: eligible,
+            picksRemaining: player.piPicksRemaining,
+          };
+          // Keep the player as a pending actor — they still owe a decision.
+          room.nightPendingActors.add(player.id);
+        }
+      }
       return { ok: true };
     }
 

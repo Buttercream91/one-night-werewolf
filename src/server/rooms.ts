@@ -56,6 +56,14 @@ export interface ServerPlayer {
   // Game-time data:
   originalRole?: Role;
   doppelgangerCopied?: Role; // role this player copied if originalRole === doppelganger
+  // Daybreak — Paranormal Investigator's team lock. Set when the PI viewed
+  // a non-villager-team card and "becomes" that role's team. Card stays PI;
+  // only team alignment changes (read via effectiveRoleOf for win logic).
+  piTeamRole?: Role;
+  // Daybreak — Paranormal Investigator picks remaining in the current step
+  // (starts at 2, decremented on each view; cleared / set to 0 when the PI
+  // becomes a non-villager team or stops early).
+  piPicksRemaining?: number;
   notes: NightNote[];
   userNotes: string[]; // free-form text notes the player typed
   prompt?: NightPrompt;
@@ -338,6 +346,8 @@ export class Room {
     this.players.forEach((p) => {
       p.originalRole = undefined;
       p.doppelgangerCopied = undefined;
+      p.piTeamRole = undefined;
+      p.piPicksRemaining = undefined;
       p.knownCurrentRole = undefined;
       p.cardFaceDown = false;
       p.notes = [];
@@ -442,6 +452,8 @@ export class Room {
     this.players.forEach((p) => {
       p.originalRole = undefined;
       p.doppelgangerCopied = undefined;
+      p.piTeamRole = undefined;
+      p.piPicksRemaining = undefined;
       p.knownCurrentRole = undefined;
       p.cardFaceDown = false;
       p.notes = [];
@@ -660,10 +672,19 @@ export class Room {
     if (!this.nightPendingActors.has(playerId)) return { ok: false, error: "Not your turn" };
     const player = this.players.find((p) => p.id === playerId);
     if (!player) return { ok: false, error: "Unknown player" };
+    // Snapshot the prompt reference before applying — if applyNightAction
+    // replaces it with a new prompt object (e.g. PI's "look at one more"
+    // continuation), the player still owes another decision and we must
+    // keep them in nightPendingActors.
+    const promptBefore = player.prompt;
     const result = applyNightAction(this, player, action);
     if (!result.ok) return result;
-    this.nightPendingActors.delete(playerId);
-    player.prompt = undefined;
+    if (player.prompt && player.prompt !== promptBefore) {
+      // Multi-step action: keep them pending with the new prompt.
+    } else {
+      this.nightPendingActors.delete(playerId);
+      player.prompt = undefined;
+    }
     // Intro: short-circuit when every pending human has flipped. There's no
     // info leak here — the narrator's whole point is "wait for everyone".
     if (this.nightStep === "intro" && this.nightPendingActors.size === 0) {
@@ -895,6 +916,13 @@ export class Room {
     const p = this.players.find((p) => p.id === playerId);
     if (p?.originalRole === "doppelganger" && p.doppelgangerCopied) {
       return p.doppelgangerCopied;
+    }
+    // Daybreak — Paranormal Investigator's team locks to the role they
+    // viewed when it's non-villager-team (Werewolf / Minion / Tanner). Their
+    // physical card stays "paranormal_investigator" but win logic uses the
+    // locked role.
+    if (p?.originalRole === "paranormal_investigator" && p.piTeamRole) {
+      return p.piTeamRole;
     }
     return this.currentRoleOf(playerId);
   }

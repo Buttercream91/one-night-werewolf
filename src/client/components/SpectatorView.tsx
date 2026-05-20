@@ -242,6 +242,12 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return "No centre Werewolf to swap.";
     case "mystic_wolf_saw":
       return `Looked at ${nameOf(n.targetId)} — ${label(n.role)}.`;
+    case "apprentice_seer_center":
+      return `Peeked centre #${n.index + 1} — ${label(n.role)}.`;
+    case "pi_saw":
+      return n.teamLocked
+        ? `Investigated ${nameOf(n.targetId)} — ${label(n.role)}. Team locked.`
+        : `Investigated ${nameOf(n.targetId)} — ${label(n.role)}.`;
     case "dream_wolf_seen":
       return "Dream Wolf — stayed asleep.";
     case "dream_wolves_in_play":

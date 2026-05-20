@@ -167,6 +167,7 @@ function computeCenterMode(prompt: NightPrompt | undefined, seerSubMode: "player
   if (prompt.kind === "werewolf_lone") return "lone-wolf";
   if (prompt.kind === "drunk_choose") return "drunk";
   if (prompt.kind === "seer_choose" && seerSubMode === "center") return "seer-center";
+  if (prompt.kind === "apprentice_seer_choose") return "apprentice-seer";
   return "view";
 }
 
@@ -215,6 +216,28 @@ function ActionForm({
         )}
         {prompt.kind === "mystic_wolf_choose" && (
           <MysticWolfControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
+        )}
+        {prompt.kind === "apprentice_seer_choose" && (
+          <p className="text-sm text-slate-400 italic">
+            Click a centre card above to peek, or skip.
+          </p>
+        )}
+        {prompt.kind === "apprentice_seer_choose" && (
+          <button
+            className="btn-ghost mt-2"
+            onClick={() =>
+              send.nightAction({ kind: "apprentice_seer_view", centerIndex: null })
+            }
+          >
+            Skip
+          </button>
+        )}
+        {prompt.kind === "paranormal_investigator_choose" && (
+          <ParanormalInvestigatorControls
+            room={room}
+            eligibleIds={prompt.eligiblePlayerIds}
+            picksRemaining={prompt.picksRemaining}
+          />
         )}
       </div>
     </div>
@@ -302,6 +325,51 @@ function AlphaWolfControls({
       >
         Skip
       </button>
+    </div>
+  );
+}
+
+function ParanormalInvestigatorControls({
+  room,
+  eligibleIds,
+  picksRemaining,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+  picksRemaining: number;
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-slate-400">
+        {picksRemaining === 2
+          ? "Pick your first target. If they're a Werewolf, Minion or Tanner you become that team and your investigation ends."
+          : "Pick a second target, or stop here."}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {eligible.map((p) => {
+          const isShielded = shielded.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              className="btn-ghost"
+              disabled={isShielded}
+              title={isShielded ? "Shielded by the Sentinel — can't be viewed" : undefined}
+              onClick={() => send.nightAction({ kind: "pi_view", targetId: p.id })}
+            >
+              Look at {p.name}
+              {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+            </button>
+          );
+        })}
+        <button
+          className="btn-ghost"
+          onClick={() => send.nightAction({ kind: "pi_stop" })}
+        >
+          {picksRemaining === 2 ? "Skip" : "Stop"}
+        </button>
+      </div>
     </div>
   );
 }

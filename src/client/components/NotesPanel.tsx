@@ -123,6 +123,25 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           <RoleChip role={n.role} />.
         </>
       );
+    case "apprentice_seer_center":
+      return (
+        <>
+          You peeked centre card #{n.index + 1}: <RoleChip role={n.role} />.
+        </>
+      );
+    case "pi_saw":
+      return n.teamLocked ? (
+        <>
+          You looked at <PlayerChip id={n.targetId} room={room} />'s card —{" "}
+          <RoleChip role={n.role} />. You stop investigating and your team
+          locks to <RoleChip role={n.role} />.
+        </>
+      ) : (
+        <>
+          You looked at <PlayerChip id={n.targetId} room={room} />'s card —{" "}
+          <RoleChip role={n.role} />.
+        </>
+      );
     case "dream_wolf_seen":
       return <>You stayed asleep — the wolves can see you.</>;
     case "dream_wolves_in_play":

@@ -233,6 +233,16 @@ export type ActionLogEntry =
   | { kind: "alpha_wolf_no_swap"; actorId: string }
   | { kind: "mystic_wolf_saw"; actorId: string; targetId: string; role: Role }
   | { kind: "mystic_wolf_skipped"; actorId: string }
+  | { kind: "apprentice_seer_saw"; actorId: string; centerIndex: number; role: Role }
+  | { kind: "apprentice_seer_skipped"; actorId: string }
+  | {
+      kind: "pi_saw";
+      actorId: string;
+      targetId: string;
+      role: Role;
+      teamLocked: boolean;
+    }
+  | { kind: "pi_stopped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -414,6 +424,12 @@ export type NightNote =
   // Daybreak — Mystic Wolf peeked another player's card. (Skipping yields
   // no note — same convention as seer_skipped / robber_skipped.)
   | { kind: "mystic_wolf_saw"; targetId: string; role: Role }
+  // Daybreak — Apprentice Seer peeked one centre card.
+  | { kind: "apprentice_seer_center"; index: number; role: Role }
+  // Daybreak — Paranormal Investigator peeked a player. role is what they
+  // saw; teamLocked indicates whether seeing this card flipped the PI to
+  // that role's team (true when role is werewolf/minion/tanner).
+  | { kind: "pi_saw"; targetId: string; role: Role; teamLocked: boolean }
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
@@ -465,6 +481,18 @@ export type NightPrompt =
     }
   // Daybreak — Mystic Wolf peeks one player's card.
   | { kind: "mystic_wolf_choose"; message: string; eligiblePlayerIds: string[] }
+  // Daybreak — Apprentice Seer peeks one centre card. Uses the same centre-
+  // card click UI as the Lone Wolf peek.
+  | { kind: "apprentice_seer_choose"; message: string }
+  // Daybreak — Paranormal Investigator. picksRemaining is 2 on the first
+  // prompt, 1 after a villager-team peek. Drops out as soon as the PI views
+  // a non-villager-team role (they become that team) or picks Stop.
+  | {
+      kind: "paranormal_investigator_choose";
+      message: string;
+      eligiblePlayerIds: string[];
+      picksRemaining: number;
+    }
   | { kind: "ack"; message: string }; // No choice — just confirm "got it".
 
 // Action submissions from a single player.
@@ -485,7 +513,15 @@ export type NightAction =
   // when no centre Werewolf exists or no eligible target).
   | { kind: "alpha_wolf_swap"; targetId: string | null }
   // Daybreak — Mystic Wolf peeks one other player's card. Null = skip.
-  | { kind: "mystic_wolf_view"; targetId: string | null };
+  | { kind: "mystic_wolf_view"; targetId: string | null }
+  // Daybreak — Apprentice Seer peeks one centre card. Null = skip.
+  | { kind: "apprentice_seer_view"; centerIndex: number | null }
+  // Daybreak — Paranormal Investigator picks a player to peek. The server
+  // returns the role in a note; the prompt then either ends (non-villager
+  // team viewed → PI becomes that team) or refreshes for a second pick.
+  | { kind: "pi_view"; targetId: string }
+  // Stops the PI's investigation after the first pick (or before any pick).
+  | { kind: "pi_stop" };
 
 export interface ChatMessage {
   id: string;

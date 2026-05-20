@@ -2,7 +2,12 @@ import type { PrivateView, PublicRoom, Role } from "../../shared/types.js";
 import { send } from "../socket.js";
 import { RoleCard } from "./RoleCard.js";
 
-export type CenterMode = "view" | "lone-wolf" | "seer-center" | "drunk";
+export type CenterMode =
+  | "view"
+  | "lone-wolf"
+  | "seer-center"
+  | "drunk"
+  | "apprentice-seer";
 
 interface Props {
   me: PrivateView;
@@ -30,6 +35,8 @@ export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
   function onPick(index: number) {
     if (mode === "lone-wolf") {
       send.nightAction({ kind: "werewolf_lone_view", centerIndex: index });
+    } else if (mode === "apprentice-seer") {
+      send.nightAction({ kind: "apprentice_seer_view", centerIndex: index });
     } else if (mode === "drunk") {
       send.nightAction({ kind: "drunk_swap", centerIndex: index });
     } else if (mode === "seer-center") {
@@ -108,6 +115,8 @@ function labelForMode(mode: CenterMode): string {
   switch (mode) {
     case "lone-wolf":
       return "Click a card to peek";
+    case "apprentice-seer":
+      return "Click one card to peek";
     case "seer-center":
       return "Pick 2 cards to peek";
     case "drunk":
@@ -134,11 +143,18 @@ function peekedCenters(me: PrivateView, room: PublicRoom): Map<number, Role> {
   const seerActing =
     step === "seer" ||
     (step === "doppelganger_act" && me.myOriginalRole === "doppelganger");
+  // Apprentice Seer peeked → visible during their step (or doppelganger_act
+  // if a DG-as-Apprentice-Seer is acting).
+  const appSeerActing =
+    step === "apprentice_seer" ||
+    (step === "doppelganger_act" && me.myOriginalRole === "doppelganger");
   for (const n of me.notes) {
     if (n.kind === "lone_wolf_center" && wolfActing) {
       m.set(n.index, n.role);
     } else if (n.kind === "seer_center" && seerActing) {
       for (const c of n.cards) m.set(c.index, c.role);
+    } else if (n.kind === "apprentice_seer_center" && appSeerActing) {
+      m.set(n.index, n.role);
     }
   }
   return m;

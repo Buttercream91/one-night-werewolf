@@ -151,6 +151,42 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
           chose not to look.
         </>
       );
+    case "apprentice_seer_saw":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="apprentice_seer" />)
+          peeked centre #{e.centerIndex + 1} — <RoleChip role={e.role} />.
+        </>
+      );
+    case "apprentice_seer_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="apprentice_seer" />)
+          chose not to look.
+        </>
+      );
+    case "pi_saw":
+      return e.teamLocked ? (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (
+          <RoleChip role="paranormal_investigator" />) investigated{" "}
+          <PlayerChip id={e.targetId} room={room} /> — <RoleChip role={e.role} />.
+          Their team locked to <RoleChip role={e.role} />.
+        </>
+      ) : (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (
+          <RoleChip role="paranormal_investigator" />) investigated{" "}
+          <PlayerChip id={e.targetId} room={room} /> — <RoleChip role={e.role} />.
+        </>
+      );
+    case "pi_stopped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (
+          <RoleChip role="paranormal_investigator" />) stopped investigating.
+        </>
+      );
     case "doppelganger_copied":
       return (
         <>
