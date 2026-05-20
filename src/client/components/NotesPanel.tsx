@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { NightNote, PrivateView, PublicRoom } from "../../shared/types.js";
+import { ARTIFACT_META } from "../../shared/types.js";
 import { send } from "../socket.js";
 import { PlayerChip, PlayerList, RoleChip } from "./Chips.js";
 
@@ -212,8 +213,11 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
     case "you_received_artifact":
       return (
         <span className="text-amber-300">
-          🎴 An artifact has been placed on your card. Its effect (if any)
-          activates at the reveal — or sooner.
+          🎴 The Curator placed{" "}
+          <span className="font-semibold">
+            {ARTIFACT_META[n.artifact].label}
+          </span>{" "}
+          on your card — {ARTIFACT_META[n.artifact].description}
         </span>
       );
     case "doppelganger_copied":

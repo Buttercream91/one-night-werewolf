@@ -1,5 +1,5 @@
 import type { NightNote, PrivateView, PublicRoom, Role } from "../../shared/types.js";
-import { DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
+import { ARTIFACT_META, DEFAULT_VOICE_PACK, ROLE_META } from "../../shared/types.js";
 import { unlockNarrationAudio, useStepAudio } from "../nightAudio.js";
 import { playerColor } from "../playerColor.js";
 import { loadNarrator } from "../storage.js";
@@ -269,7 +269,7 @@ function describeNote(n: NightNote, room: PublicRoom): string {
     case "curator_placed_token":
       return `Placed an artifact on ${nameOf(n.targetId)}'s card (kind unknown to Curator).`;
     case "you_received_artifact":
-      return "Received an artifact.";
+      return `Received the ${ARTIFACT_META[n.artifact].label}.`;
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":

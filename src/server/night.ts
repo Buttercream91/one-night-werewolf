@@ -1212,8 +1212,11 @@ export function applyNightAction(
         kind: "curator_placed_token",
         targetId: target.id,
       });
-      // Target also gets a note that an artifact is now on their card.
-      target.notes.push({ kind: "you_received_artifact" });
+      // Target gets a note recording the specific artifact landed on their
+      // card — they're allowed to know (so they can react to the Mask
+      // muting them, plan for the Claw/Cudgel/Brand team change, etc.).
+      // The kind stays hidden from everyone else until the reveal.
+      target.notes.push({ kind: "you_received_artifact", artifact });
       // Reveal-time log entry carries the artifact kind so the final recap
       // shows what each Curator placed.
       room.actionLog.push({

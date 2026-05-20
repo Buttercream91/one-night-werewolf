@@ -549,9 +549,10 @@ export type NightNote =
   // Daybreak — Curator's record of placing an artifact (they don't see
   // which artifact landed; the server picks).
   | { kind: "curator_placed_token"; targetId: string }
-  // Pushed to the player who receives an artifact, so they know a token
-  // ended up on their card even though they don't yet know what it is.
-  | { kind: "you_received_artifact" }
+  // Pushed to the player who receives an artifact. They know the kind
+  // (so they can plan for the Mask, etc.) — the rest of the table only
+  // sees a token until the reveal.
+  | { kind: "you_received_artifact"; artifact: ArtifactKind }
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
