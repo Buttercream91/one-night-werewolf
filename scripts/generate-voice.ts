@@ -74,6 +74,15 @@ const CLIPS: Record<string, string> = {
   Doppelganger_Act_Robber: "Robber",
   Doppelganger_Act_Troublemaker: "Troublemaker",
   Doppelganger_Act_Drunk: "Drunk",
+  // Daybreak DG-act role name clips, added so the narrator can list every
+  // copy-role in the deck during the doppelganger_act step.
+  Doppelganger_Act_Sentinel: "Sentinel",
+  Doppelganger_Act_Alpha_Wolf: "Alpha Wolf",
+  Doppelganger_Act_Mystic_Wolf: "Mystic Wolf",
+  Doppelganger_Act_Apprentice_Seer: "Apprentice Seer",
+  Doppelganger_Act_Paranormal_Investigator: "Paranormal Investigator",
+  Doppelganger_Act_Witch: "Witch",
+  Doppelganger_Act_Village_Idiot: "Village Idiot",
   Doppelganger_Act_Or: "or",
   Doppelganger_Act_Suffix: "do your action now.",
   Werewolves:

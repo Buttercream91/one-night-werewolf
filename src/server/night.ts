@@ -67,15 +67,22 @@ function isDgActRole(role: Role | undefined): role is DgActRole {
   return (DG_ACT_ROLES as readonly Role[]).includes(role as Role);
 }
 
-// Only Seer/Robber/Troublemaker/Drunk have narration clips for the dynamic
-// doppelganger_act sequence (the original base-game four). Daybreak DG-act
-// roles get the action wired up but reuse the existing narration. We can
-// add per-role clips later if it's worth the voice budget.
-const DG_ACT_ROLE_CLIP: Partial<Record<DgActRole, string>> = {
+// One narration clip per DG-act role. The dynamic doppelganger_act sequence
+// names every role currently in the deck so the DG knows which copy-roles
+// they might be acting as ("If you viewed the Seer or the Witch, do your
+// action now.").
+const DG_ACT_ROLE_CLIP: Record<DgActRole, string> = {
+  sentinel: "Doppelganger_Act_Sentinel.mp3",
   seer: "Doppelganger_Act_Seer.mp3",
+  apprentice_seer: "Doppelganger_Act_Apprentice_Seer.mp3",
+  paranormal_investigator: "Doppelganger_Act_Paranormal_Investigator.mp3",
   robber: "Doppelganger_Act_Robber.mp3",
+  witch: "Doppelganger_Act_Witch.mp3",
   troublemaker: "Doppelganger_Act_Troublemaker.mp3",
+  village_idiot: "Doppelganger_Act_Village_Idiot.mp3",
   drunk: "Doppelganger_Act_Drunk.mp3",
+  alpha_wolf: "Doppelganger_Act_Alpha_Wolf.mp3",
+  mystic_wolf: "Doppelganger_Act_Mystic_Wolf.mp3",
 };
 
 // Daybreak — roles where the DG copy acts AFTER the real role's step (its
@@ -121,12 +128,7 @@ function isDreamWolfRole(p: ServerPlayer): boolean {
 // step that runs has a clip).
 export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
   if (step === "doppelganger_act") {
-    // Only the four base-game DG-act roles have dedicated narration clips
-    // — the Daybreak roles share the suffix. Filter to those with clips so
-    // the sequence stays grammatical (Prefix + name(s) + Suffix).
-    const active = DG_ACT_ROLES.filter(
-      (r) => selectedRoles.includes(r) && DG_ACT_ROLE_CLIP[r],
-    );
+    const active = DG_ACT_ROLES.filter((r) => selectedRoles.includes(r));
     if (active.length === 0) return []; // step gets skipped via isStepInPlay
     const out = ["Doppelganger_Act_Prefix.mp3"];
     active.forEach((r, i) => {
@@ -134,8 +136,7 @@ export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
       if (i === active.length - 1 && active.length >= 2) {
         out.push("Doppelganger_Act_Or.mp3");
       }
-      const clip = DG_ACT_ROLE_CLIP[r];
-      if (clip) out.push(clip);
+      out.push(DG_ACT_ROLE_CLIP[r]);
     });
     out.push("Doppelganger_Act_Suffix.mp3");
     return out;
