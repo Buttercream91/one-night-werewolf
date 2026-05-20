@@ -221,17 +221,24 @@ function AckButton() {
 
 function DoppelgangerControls({ room, eligibleIds }: { room: PublicRoom; eligibleIds: string[] }) {
   const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
   return (
     <div className="flex flex-wrap gap-2">
-      {eligible.map((p) => (
-        <button
-          key={p.id}
-          className="btn-ghost"
-          onClick={() => send.nightAction({ kind: "doppelganger_copy", targetId: p.id })}
-        >
-          Copy {p.name}
-        </button>
-      ))}
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be targeted" : undefined}
+            onClick={() => send.nightAction({ kind: "doppelganger_copy", targetId: p.id })}
+          >
+            Copy {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -310,13 +317,24 @@ function SeerControls({
     );
   }
   if (mode === "player") {
+    const shielded = room.shieldedPlayerIds ?? [];
     return (
       <div className="flex flex-wrap gap-2">
-        {others.map((p) => (
-          <button key={p.id} className="btn-ghost" onClick={() => viewPlayer(p.id)}>
-            {p.name}
-          </button>
-        ))}
+        {others.map((p) => {
+          const isShielded = shielded.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              className="btn-ghost"
+              disabled={isShielded}
+              title={isShielded ? "Shielded by the Sentinel — can't be viewed" : undefined}
+              onClick={() => viewPlayer(p.id)}
+            >
+              {p.name}
+              {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+            </button>
+          );
+        })}
         <button className="btn-ghost" onClick={() => setMode(null)}>
           Back
         </button>
@@ -335,17 +353,24 @@ function SeerControls({
 
 function RobberControls({ room, eligibleIds }: { room: PublicRoom; eligibleIds: string[] }) {
   const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
   return (
     <div className="flex flex-wrap gap-2">
-      {eligible.map((p) => (
-        <button
-          key={p.id}
-          className="btn-ghost"
-          onClick={() => send.nightAction({ kind: "robber_swap", targetId: p.id })}
-        >
-          Rob {p.name}
-        </button>
-      ))}
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be robbed" : undefined}
+            onClick={() => send.nightAction({ kind: "robber_swap", targetId: p.id })}
+          >
+            Rob {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
       <button
         className="btn-ghost"
         onClick={() => send.nightAction({ kind: "robber_swap", targetId: null })}
@@ -365,6 +390,7 @@ function TroublemakerControls({
 }) {
   const [picks, setPicks] = useState<string[]>([]);
   const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
   function toggle(id: string) {
     if (picks.includes(id)) {
       setPicks(picks.filter((x) => x !== id));
@@ -379,15 +405,21 @@ function TroublemakerControls({
   }
   return (
     <div className="flex flex-wrap gap-2">
-      {eligible.map((p) => (
-        <button
-          key={p.id}
-          className={`btn-ghost ${picks.includes(p.id) ? "ring-2 ring-indigo-400" : ""}`}
-          onClick={() => toggle(p.id)}
-        >
-          {p.name}
-        </button>
-      ))}
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className={`btn-ghost ${picks.includes(p.id) ? "ring-2 ring-indigo-400" : ""}`}
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't be swapped" : undefined}
+            onClick={() => toggle(p.id)}
+          >
+            {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
       <button
         className="btn-ghost"
         onClick={() => send.nightAction({ kind: "troublemaker_swap", targetIds: null })}
