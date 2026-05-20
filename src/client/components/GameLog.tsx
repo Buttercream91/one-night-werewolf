@@ -68,6 +68,7 @@ export function GameLog({ room }: Props) {
 function phaseOf(e: ActionLogEntry): Phase {
   switch (e.kind) {
     case "vote":
+    case "bodyguard_saved":
       return "vote";
     case "killed":
     case "no_one_died":
@@ -265,6 +266,14 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
         <>
           <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="curator" />)
           didn't place an artifact.
+        </>
+      );
+    case "bodyguard_saved":
+      return (
+        <>
+          <PlayerChip id={e.bodyguardId} room={room} /> (
+          <RoleChip role="bodyguard" />) protected{" "}
+          <PlayerChip id={e.savedId} room={room} /> from the village vote.
         </>
       );
     case "doppelganger_copied":

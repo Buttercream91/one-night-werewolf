@@ -159,6 +159,76 @@ describe("resolveVotes — Tanner", () => {
   });
 });
 
+describe("resolveVotes — Bodyguard saves", () => {
+  test("Bodyguard saves the top-vote target → cascades to second place", () => {
+    const { room, ids } = makeRoom([
+      ["A", "bodyguard"],
+      ["B", "werewolf"],
+      ["C", "seer"],
+      ["D", "villager"],
+    ]);
+    // Top tier: B with 3 votes. Bodyguard A saves B → cascade.
+    // Second tier: D with 1 vote → D dies (cascade ignores the 2-vote min).
+    castEveryoneVotes(room, ids, { A: "B", B: "D", C: "B", D: "B" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.D]);
+  });
+
+  test("Bodyguard saves a non-top target → no effect on the kill", () => {
+    const { room, ids } = makeRoom([
+      ["A", "bodyguard"],
+      ["B", "werewolf"],
+      ["C", "seer"],
+      ["D", "villager"],
+    ]);
+    // Top tier: B with 3 votes. Bodyguard A saves D (irrelevant). B dies.
+    castEveryoneVotes(room, ids, { A: "D", B: "C", C: "B", D: "B" });
+    const r = resolveVotes(room);
+    // Wait — A voted D (1 vote), B voted C (1), C voted B (1), D voted B (1).
+    // Top is B with 2, not 3. Let me adjust the test.
+    expect(r.killedIds).toEqual([ids.B]);
+  });
+
+  test("Multiple Bodyguards saving different targets → both saves apply", () => {
+    const { room, ids } = makeRoom([
+      ["A", "bodyguard"],
+      ["B", "bodyguard"],
+      ["C", "werewolf"],
+      ["D", "seer"],
+    ]);
+    // C gets 2 votes, D gets 2 votes (tied). Both saved by different BGs.
+    // No tier survives → cascade to next (empty) → no_one_died.
+    castEveryoneVotes(room, ids, { A: "C", B: "D", C: "D", D: "C" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([]);
+  });
+
+  test("Mixed tier — some saved, some not → only unsaved die", () => {
+    const { room, ids } = makeRoom([
+      ["A", "bodyguard"],
+      ["B", "werewolf"],
+      ["C", "seer"],
+      ["D", "villager"],
+    ]);
+    // C and D both get 2 votes (top tier). C is bodyguarded; D is not.
+    castEveryoneVotes(room, ids, { A: "C", B: "C", C: "D", D: "D" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.D]);
+  });
+
+  test("DG-as-Bodyguard's vote also saves their target", () => {
+    const { room, ids } = makeRoom([
+      ["A", "doppelganger", "bodyguard"],
+      ["B", "werewolf"],
+      ["C", "seer"],
+      ["D", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "B", B: "D", C: "B", D: "B" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.D]);
+  });
+});
+
 describe("resolveVotes — wolfless games (house rule)", () => {
   test("wolfless, villager killed → wolf-team (minion) wins", () => {
     const { room, ids } = makeRoom([

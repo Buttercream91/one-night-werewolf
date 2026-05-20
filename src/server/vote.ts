@@ -38,10 +38,51 @@ export function resolveVotes(room: Room): VoteResolution {
   let maxVotes = 0;
   for (const c of counts.values()) maxVotes = Math.max(maxVotes, c);
 
+  // Daybreak — Bodyguard's vote saves their pick. We resolve in tiers:
+  // start at the top vote count, drop any IDs that a Bodyguard voted for,
+  // and if everyone in that tier was saved cascade to the next tier (the
+  // "second-most votes" rule). The 2-vote minimum still gates the original
+  // kill — if max votes < 2 nobody was going to die anyway, so the save
+  // doesn't trigger.
+  const savedBy = new Map<string, string[]>(); // saved player → bodyguard IDs
+  for (const p of room.players) {
+    if (room.effectiveRoleOf(p.id) !== "bodyguard") continue;
+    if (!p.vote || p.vote === "no_kill") continue;
+    const list = savedBy.get(p.vote) ?? [];
+    list.push(p.id);
+    savedBy.set(p.vote, list);
+  }
   let killedIds: string[] = [];
   if (maxVotes >= 2) {
+    // Group all vote-getters by count, walk tiers descending.
+    const tiers = new Map<number, string[]>();
     for (const [id, c] of counts.entries()) {
-      if (c === maxVotes) killedIds.push(id);
+      const arr = tiers.get(c) ?? [];
+      arr.push(id);
+      tiers.set(c, arr);
+    }
+    const sortedCounts = [...tiers.keys()].sort((a, b) => b - a);
+    for (const c of sortedCounts) {
+      const tier = tiers.get(c)!;
+      const dying = tier.filter((id) => !savedBy.has(id));
+      // Anyone in this tier who WAS bodyguarded gets a save entry, even if
+      // the kill ends up falling here anyway (e.g. mixed tier).
+      for (const savedId of tier) {
+        const guards = savedBy.get(savedId);
+        if (!guards) continue;
+        for (const bg of guards) {
+          room.actionLog.push({
+            kind: "bodyguard_saved",
+            bodyguardId: bg,
+            savedId,
+          });
+        }
+      }
+      if (dying.length > 0) {
+        killedIds = dying;
+        break;
+      }
+      // Whole tier saved — cascade to next-most.
     }
   }
 

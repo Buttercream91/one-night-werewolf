@@ -337,6 +337,9 @@ export type ActionLogEntry =
       artifact: ArtifactKind;
     }
   | { kind: "curator_skipped"; actorId: string }
+  // Daybreak — Bodyguard's vote-time save: the bodyguard's pick would have
+  // been killed but for this protection. Pushed once per save.
+  | { kind: "bodyguard_saved"; bodyguardId: string; savedId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
