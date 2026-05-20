@@ -166,6 +166,7 @@ export class Room {
       color: spectating ? undefined : this.pickFreeColor(),
     };
     this.players.push(player);
+    if (!spectating) this.autoAdjustDeck();
     return player;
   }
 
@@ -181,10 +182,12 @@ export class Room {
   }
 
   removePlayer(playerId: string) {
+    const wasActive = !!this.players.find((p) => p.id === playerId && !p.spectating);
     this.players = this.players.filter((p) => p.id !== playerId);
     if (this.hostId === playerId) {
       this.hostId = this.pickFallbackHost(playerId);
     }
+    if (wasActive) this.autoAdjustDeck();
   }
 
   // Pick a sensible new host. Prefer a connected, non-spectator, non-bot
@@ -871,6 +874,33 @@ export class Room {
     }
   }
 
+  // ---- Lobby deck auto-adjust ----
+
+  // Keeps selectedRoles.length aligned with active-player-count + 3 as people
+  // join, leave, or toggle spectator. Roles are added/removed from the
+  // PRIORITY_LIST (Werewolf is the always-on seed; Doppelganger, Masons, and
+  // anything else the user manually toggled lives outside this auto-managed
+  // pool). With removeCardLimit on, we only ever grow (never shrink past
+  // existing manual oversize). Lobby-only — never touches an active deal.
+  private autoAdjustDeck() {
+    if (this.phase !== "lobby") return;
+    const activeCount = this.players.filter((p) => !p.spectating).length;
+    const target = activeCount + 3;
+    let safety = 32;
+    while (this.selectedRoles.length < target && safety-- > 0) {
+      const role = pickNextPriorityToAdd(this.selectedRoles);
+      if (!role) break;
+      this.selectedRoles.push(role);
+    }
+    if (this.removeCardLimit) return;
+    safety = 32;
+    while (this.selectedRoles.length > target && safety-- > 0) {
+      const idx = pickNextPriorityToRemoveIdx(this.selectedRoles);
+      if (idx < 0) break;
+      this.selectedRoles.splice(idx, 1);
+    }
+  }
+
   // ---- Internal helpers used by night.ts ----
 
   currentRoleOf(playerId: string): Role {
@@ -1006,7 +1036,9 @@ export class Room {
     const r = this.requireDev(hostId);
     if (!r.ok) return r;
     if (this.phase !== "lobby") return { ok: false, error: "Clear bots in the lobby only" };
+    const removedActive = this.players.some((p) => p.bot && !p.spectating);
     this.players = this.players.filter((p) => !p.bot);
+    if (removedActive) this.autoAdjustDeck();
     return { ok: true };
   }
 
@@ -1250,6 +1282,8 @@ export class Room {
       p.spectating = false;
       // Hand them a fresh color now that they're displayed in the active list.
       if (!p.color) p.color = this.pickFreeColor();
+      // Active player count went up — grow the deck via the priority list.
+      this.autoAdjustDeck();
       return { ok: true };
     }
 
@@ -1305,6 +1339,9 @@ export class Room {
     }
     // Clear any accusations they made — spectators shouldn't keep asserting things.
     this.accusations = this.accusations.filter((a) => a.accuserId !== playerId);
+    // Active player count went down — shrink the deck via the priority list
+    // (lobby only; mid-game we leave the dealt deck alone).
+    if (this.phase === "lobby") this.autoAdjustDeck();
     return { ok: true };
   }
 
@@ -1379,6 +1416,76 @@ export class Room {
 function nextNightStep(step: NightStep): NightStep | undefined {
   const i = NIGHT_ORDER.indexOf(step);
   return NIGHT_ORDER[i + 1];
+}
+
+// Order roles are auto-added to the deck as players join (and auto-removed in
+// reverse as players leave). Werewolf is the always-on seed (not in this
+// list). Masons are intentionally omitted — they must come in pairs and the
+// host manages them by hand. Multi-instance roles (extra Werewolf, Villagers)
+// appear at the slot where they would be added.
+const PRIORITY_LIST: Role[] = [
+  "seer",
+  "troublemaker",
+  "insomniac",
+  "robber",
+  "minion",
+  "tanner",
+  "werewolf", // 2nd werewolf (the seed is the 1st)
+  "doppelganger",
+  "drunk",
+  "hunter",
+  "villager",
+  "villager",
+  "villager",
+];
+
+// The 1st Werewolf is the seed — always in the deck, never removed by
+// auto-adjust. Treat it as if it were the slot before the priority list
+// so cumulative counts for werewolf line up with the deck reality.
+function seedCumulative(): Partial<Record<Role, number>> {
+  return { werewolf: 1 };
+}
+
+// Choose the next role to add when the deck needs to grow. Walk the priority
+// list left-to-right and return the first slot whose role appears in the
+// deck fewer times than its cumulative count up to that slot (seed Werewolf
+// counted). Returns null when every slot is already satisfied.
+function pickNextPriorityToAdd(deck: Role[]): Role | null {
+  const cumulative = seedCumulative();
+  for (const role of PRIORITY_LIST) {
+    cumulative[role] = (cumulative[role] ?? 0) + 1;
+    const inDeck = deck.filter((r) => r === role).length;
+    if (inDeck < cumulative[role]!) {
+      // Don't add if the deck would exceed the role's max count (defensive —
+      // PRIORITY_LIST already respects ROLE_META maxCount, but a manual
+      // pre-fill could have pushed e.g. Villagers above 3).
+      if (inDeck < ROLE_META[role].maxCount) return role;
+    }
+  }
+  return null;
+}
+
+// Choose the deck index to remove when the deck needs to shrink. Walk the
+// priority list right-to-left; the first slot whose role currently sits at
+// or above its cumulative count (seed Werewolf counted) is the one to drop.
+// Returns the deck index of the last instance of that role. Never returns
+// the seed Werewolf — the seed sits "before" the priority list so its slot
+// is unreachable by the reverse walk.
+function pickNextPriorityToRemoveIdx(deck: Role[]): number {
+  const cumulative = seedCumulative();
+  for (const role of PRIORITY_LIST) {
+    cumulative[role] = (cumulative[role] ?? 0) + 1;
+  }
+  for (let i = PRIORITY_LIST.length - 1; i >= 0; i--) {
+    const role = PRIORITY_LIST[i];
+    const required = cumulative[role]!;
+    const inDeck = deck.filter((r) => r === role).length;
+    if (inDeck >= required) {
+      return deck.lastIndexOf(role);
+    }
+    cumulative[role]! -= 1;
+  }
+  return -1;
 }
 
 // ---- Registry ----
