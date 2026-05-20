@@ -63,21 +63,35 @@ export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
         </span>
         <span className="text-xs text-slate-500">{labelForMode(mode)}</span>
       </div>
-      <div className="flex justify-center gap-4 flex-wrap">
+      <div className="flex justify-center items-center gap-4 flex-wrap">
         {Array.from({ length: count }, (_, i) => {
           const peekedRole = seenByIndex.get(i);
           const isSelected = mode === "seer-center" && selected.includes(i);
           const interactive = mode !== "view" && peekedRole === undefined;
+          const isHorizontal = room.horizontalCenterIndex === i;
           return (
-            <RoleCard
+            <div
               key={i}
-              role={peekedRole}
-              size="sm"
-              caption={`Centre ${i + 1}`}
-              faceDown={peekedRole === undefined}
-              highlight={isSelected ? "selected" : peekedRole !== undefined ? "peeked" : null}
-              onClick={interactive ? () => onPick(i) : undefined}
-            />
+              className={isHorizontal ? "rotate-90 my-4" : ""}
+              title={
+                isHorizontal
+                  ? "Centre wolf card — placed by the Alpha Wolf mechanic"
+                  : undefined
+              }
+            >
+              <RoleCard
+                role={peekedRole}
+                size="sm"
+                caption={
+                  isHorizontal
+                    ? `Wolf card`
+                    : `Centre ${i + 1}`
+                }
+                faceDown={peekedRole === undefined}
+                highlight={isSelected ? "selected" : peekedRole !== undefined ? "peeked" : null}
+                onClick={interactive ? () => onPick(i) : undefined}
+              />
+            </div>
           );
         })}
       </div>

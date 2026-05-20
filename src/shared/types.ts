@@ -169,6 +169,13 @@ export interface PublicRoom {
   // shield blocks all subsequent night actions targeting that card. Public so
   // every player can see the shield icon on the affected tile.
   shieldedPlayerIds?: string[];
+  // Daybreak — index into centerCards (or, before reveal, centerCardCount)
+  // of the auto-added wolf card placed when Alpha Wolf is in the deck. It's
+  // a normal centre card mechanically (Seer/Drunk/Witch/Lone Wolf can all
+  // touch it), but the UI renders it rotated 90° to visually mark it as the
+  // "centre Werewolf card" the Alpha Wolf swaps. undefined when no Alpha
+  // Wolf is in the deck.
+  horizontalCenterIndex?: number;
   // Filenames under /voice/<pack>/ to play in sequence at the start of this
   // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
   // the server assembles multiple clips so the narrator can name only the
@@ -714,7 +721,7 @@ export const ROLE_META: Record<Role, RoleMeta> = {
     label: "Alpha Wolf",
     team: "werewolf",
     description:
-      "Wakes with the wolves. Then swaps the centre Werewolf card with another player's card, without looking at either.",
+      "Wakes with the wolves. Then swaps the centre wolf card with another player's card, without looking at either. Adds a 4th centre card (a random wolf) when in the deck.",
     maxCount: 1,
   },
   mystic_wolf: {

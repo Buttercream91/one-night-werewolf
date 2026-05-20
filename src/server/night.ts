@@ -420,10 +420,12 @@ export function setupNightStep(room: Room, step: NightStep) {
       return;
     }
     case "alpha_wolf": {
-      // Centre Werewolf cards available to swap. Per the rule we don't pick
-      // a specific one — the action takes the first one found; if multiple
-      // Werewolves are in the centre, this swaps the first.
-      const centerWolfIdx = room.centerCards.findIndex((c) => c === "werewolf");
+      // The Alpha Wolf swaps the horizontal centre card (added at deal
+      // time when Alpha Wolf is in the deck). hasCenterWolf reflects whether
+      // that slot exists — should always be true here in practice, since the
+      // step only runs when Alpha Wolf is in the deck, but the prompt copes
+      // if it's missing.
+      const hasHorizontal = room.horizontalCenterIndex !== undefined;
       // Eligible target: any non-self, non-spectator, non-shielded player
       // whose effective wolf-team membership is false — Alpha Wolf shouldn't
       // hand a Werewolf card to another wolf.
@@ -440,12 +442,11 @@ export function setupNightStep(room: Room, step: NightStep) {
       for (const a of actors) {
         a.prompt = {
           kind: "alpha_wolf_choose",
-          message:
-            centerWolfIdx >= 0
-              ? "You are the Alpha Wolf. Swap the centre Werewolf card with any non-wolf player's card."
-              : "You are the Alpha Wolf. No Werewolf card is in the centre — you may only skip.",
+          message: hasHorizontal
+            ? "You are the Alpha Wolf. Swap the centre wolf card with any non-wolf player's card."
+            : "You are the Alpha Wolf. No centre wolf card exists — you may only skip.",
           eligiblePlayerIds: eligible,
-          hasCenterWolf: centerWolfIdx >= 0,
+          hasCenterWolf: hasHorizontal,
         };
         room.nightPendingActors.add(a.id);
       }
@@ -716,16 +717,18 @@ export function applyNightAction(
       if (isShielded(room, target.id)) {
         return { ok: false, error: "That player is shielded by the Sentinel." };
       }
-      // Find a centre Werewolf to swap. If none exists at action time the
-      // step still resolves cleanly — treated like no_swap.
-      const centerIndex = room.centerCards.findIndex((c) => c === "werewolf");
-      if (centerIndex < 0) {
+      // Swap the horizontal centre card (the one added when Alpha Wolf is
+      // in the deck). If it's missing for some reason — e.g. a manual edit
+      // dropped the slot — record a no_swap entry and exit cleanly.
+      const centerIndex = room.horizontalCenterIndex;
+      if (centerIndex === undefined || centerIndex < 0 || centerIndex >= room.centerCards.length) {
         player.notes.push({ kind: "alpha_wolf_no_swap" });
         room.actionLog.push({ kind: "alpha_wolf_no_swap", actorId: player.id });
         return { ok: true };
       }
-      // Alpha Wolf swap: centre[idx] (Werewolf) goes to target's hand;
-      // target's old role goes to centre[idx]. Alpha Wolf sees neither card.
+      // Alpha Wolf swap: the horizontal centre card goes to target's hand;
+      // target's old role goes to the horizontal slot. Alpha Wolf sees
+      // neither card.
       room.swapPlayerWithCenter(target.id, centerIndex);
       player.notes.push({
         kind: "alpha_wolf_swapped",

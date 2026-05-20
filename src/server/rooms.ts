@@ -131,6 +131,11 @@ export class Room {
   // Game-time:
   centerCards: Role[] = [];
   originalCenterCards: Role[] = [];
+  // Daybreak — index of the centre card the Alpha Wolf is meant to swap with
+  // (rendered horizontally on the client). Set at deal time when Alpha Wolf
+  // is in the deck. undefined otherwise. The card itself behaves like any
+  // other centre card for Seer / Drunk / Witch / Lone Wolf interactions.
+  horizontalCenterIndex?: number;
   currentRoles = new Map<string, Role>(); // playerId -> live role
   nightStep?: NightStep;
   nightStepEndsAt?: number;
@@ -377,6 +382,22 @@ export class Room {
       centerDeck = deck.slice(numPlayers);
     }
     this.centerCards = centerDeck;
+    // Daybreak — when Alpha Wolf is in the deck, append an extra wolf card
+    // (the horizontal centre card the Alpha Wolf is meant to swap). Pool is
+    // every wolf-team card currently in selectedRoles, multiset-weighted so
+    // a deck with 2 Werewolves makes Werewolf twice as likely as a single
+    // Alpha/Mystic. Alpha Wolf itself is in the pool. Doesn't fire when
+    // Alpha Wolf isn't selected.
+    if (this.selectedRoles.includes("alpha_wolf")) {
+      const wolfPool = this.selectedRoles.filter((r) => WOLF_ROLES.includes(r));
+      if (wolfPool.length > 0) {
+        const horizontal = wolfPool[Math.floor(Math.random() * wolfPool.length)];
+        this.centerCards.push(horizontal);
+        this.horizontalCenterIndex = this.centerCards.length - 1;
+      }
+    } else {
+      this.horizontalCenterIndex = undefined;
+    }
     this.originalCenterCards = this.centerCards.slice();
     this.currentRoles.clear();
     for (const p of activePlayers) {
@@ -420,6 +441,7 @@ export class Room {
     });
     this.centerCards = [];
     this.originalCenterCards = [];
+    this.horizontalCenterIndex = undefined;
     this.currentRoles.clear();
     this.nightStep = undefined;
     this.nightStepEndsAt = undefined;

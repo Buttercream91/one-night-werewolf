@@ -66,6 +66,8 @@ export function toPublicRoom(room: Room): PublicRoom {
       room.phase !== "lobby" && room.shieldedPlayerIds.size > 0
         ? [...room.shieldedPlayerIds]
         : undefined,
+    horizontalCenterIndex:
+      room.phase !== "lobby" ? room.horizontalCenterIndex : undefined,
     dayEndsAt: room.dayEndsAt,
     daySeconds: room.daySeconds,
     voteEndsAt: room.voteEndsAt,
