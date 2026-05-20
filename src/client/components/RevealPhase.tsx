@@ -15,8 +15,9 @@ interface Props {
 
 export function RevealPhase({ room, me }: Props) {
   const winners = room.winners ?? [];
-  const myFinal = room.players.find((p) => p.id === me.myId)?.finalRole;
-  const iWon = !!myFinal && playerWon(myFinal, winners);
+  const myPlayer = room.players.find((p) => p.id === me.myId);
+  const myEffective = myPlayer?.effectiveRole ?? myPlayer?.finalRole;
+  const iWon = !!myEffective && playerWon(myEffective, winners);
   const isHost = !!room.players.find((p) => p.id === me.myId)?.isHost;
 
   // Play the winner-declaration audio once when this phase mounts. Uses the
@@ -54,7 +55,10 @@ export function RevealPhase({ room, me }: Props) {
             const orig = p.originalRole!;
             const final = p.finalRole!;
             const swapped = orig !== final;
-            const won = playerWon(final, winners);
+            // For win banner, use the team-locked effectiveRole when present
+            // (Doppelganger keeps their copied team across swaps); fall back
+            // to the physical card for everyone else.
+            const won = playerWon(p.effectiveRole ?? final, winners);
             return (
               <li
                 key={p.id}

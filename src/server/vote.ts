@@ -45,12 +45,14 @@ export function resolveVotes(room: Room): VoteResolution {
     }
   }
 
-  // Hunter chain.
+  // Hunter chain. Uses effectiveRoleOf so a Doppelganger who copied a Hunter
+  // still triggers the chain when killed (their physical card is still the
+  // Doppelganger card, but their locked-in team / ability is Hunter).
   const hunterDeaths: string[] = [];
   for (const id of killedIds) {
     const p = room.players.find((p) => p.id === id);
     if (!p) continue;
-    if (room.currentRoleOf(p.id) === "hunter" && p.vote && p.vote !== "no_kill") {
+    if (room.effectiveRoleOf(p.id) === "hunter" && p.vote && p.vote !== "no_kill") {
       hunterDeaths.push(p.vote);
     }
   }
@@ -64,9 +66,14 @@ export function resolveVotes(room: Room): VoteResolution {
   const allKilled = new Set([...killedIds, ...hunterDeaths]);
   killedIds = [...allKilled];
 
-  // Win calculation.
-  const killedRoles = new Set(killedIds.map((id) => room.currentRoleOf(id)));
-  const werewolvesInPlay = room.players.some((p) => room.currentRoleOf(p.id) === "werewolf");
+  // Win calculation. effectiveRoleOf is the locked-in team identity — for
+  // the Doppelganger that's the role they copied, regardless of card swaps.
+  // For everyone else it's the role on their physical card (which can change
+  // via Robber/Troublemaker/Drunk).
+  const killedRoles = new Set(killedIds.map((id) => room.effectiveRoleOf(id)));
+  const werewolvesInPlay = room.players.some(
+    (p) => room.effectiveRoleOf(p.id) === "werewolf",
+  );
   const werewolfDied = killedRoles.has("werewolf");
   const tannerDied = killedRoles.has("tanner");
 
@@ -80,7 +87,7 @@ export function resolveVotes(room: Room): VoteResolution {
       winners.add("werewolf");
     }
   } else {
-    const killedRoles = killedIds.map((id) => room.currentRoleOf(id));
+    const killedRoles = killedIds.map((id) => room.effectiveRoleOf(id));
     const villagerKilled = killedRoles.some(
       (r) => r !== "werewolf" && r !== "minion" && r !== "tanner",
     );

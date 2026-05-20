@@ -45,6 +45,11 @@ export interface PublicPlayer {
   // Reveal-only:
   originalRole?: Role;
   finalRole?: Role;
+  // Role this player is on the team of at win time. Equals finalRole for
+  // everyone except the Doppelganger, whose team locks in to the copied role
+  // even if their physical card later changes. Used client-side to compute
+  // per-player win banners.
+  effectiveRole?: Role;
   votedFor?: string | null; // player id or "no_kill"
   killed?: boolean;
 }

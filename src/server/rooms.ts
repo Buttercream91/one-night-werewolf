@@ -736,6 +736,7 @@ export class Room {
         bot: p.bot || undefined,
         originalRole: isReveal ? p.originalRole : undefined,
         finalRole: isReveal ? this.currentRoles.get(p.id) ?? p.originalRole : undefined,
+        effectiveRole: isReveal && p.originalRole ? this.effectiveRoleOf(p.id) : undefined,
         votedFor: isReveal || isVoting ? p.vote ?? null : undefined,
         killed: isReveal ? this.killedIds.includes(p.id) : undefined,
       })),
@@ -851,6 +852,21 @@ export class Room {
   currentRoleOf(playerId: string): Role {
     const p = this.players.find((p) => p.id === playerId);
     return this.currentRoles.get(playerId) ?? (p?.originalRole as Role);
+  }
+
+  // The role this player is on the team of for win-condition / hunter-chain
+  // purposes. For everyone except the Doppelganger this equals currentRoleOf
+  // — your team is determined by the card you're physically holding. The
+  // Doppelganger is the exception: their team locks in the moment they view
+  // a card and doesn't change even if their physical card is later swapped
+  // away. Use this for vote/win logic; use currentRoleOf for physical-card
+  // checks (Seer view, Insomniac self-look, swap targets).
+  effectiveRoleOf(playerId: string): Role {
+    const p = this.players.find((p) => p.id === playerId);
+    if (p?.originalRole === "doppelganger" && p.doppelgangerCopied) {
+      return p.doppelgangerCopied;
+    }
+    return this.currentRoleOf(playerId);
   }
 
   swapPlayerRoles(aId: string, bId: string) {

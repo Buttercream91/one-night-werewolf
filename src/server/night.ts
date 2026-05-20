@@ -356,11 +356,18 @@ export function applyNightAction(
       }
       const copied = room.currentRoleOf(target.id);
       if (copied === "doppelganger") return { ok: false, error: "Cannot copy a Doppelganger" };
+      // The DG locks in their team here but does NOT change cards — they
+      // physically still hold the Doppelganger card. Only doppelgangerCopied
+      // is set; currentRoles stays as the Doppelganger card. Win logic uses
+      // effectiveRoleOf() to read the locked team. Subsequent swaps (Robber,
+      // Troublemaker, Drunk) operate on the physical card via currentRoles
+      // as normal.
       player.doppelgangerCopied = copied;
-      room.setCurrentRole(player.id, copied);
+      // Show the copied role on their card briefly so they know what role
+      // they're now acting as. Their physical card is still Doppelganger
+      // (per the "You are the Doppelganger" starting-role note) — the
+      // display here is for the role-they-now-play feedback.
       player.knownCurrentRole = copied;
-      // Show the copied role on their card briefly; endNightStep will flip
-      // it face-down again at step end.
       player.cardFaceDown = false;
       player.notes.push({ kind: "doppelganger_copied", targetId: target.id, role: copied });
       room.actionLog.push({
