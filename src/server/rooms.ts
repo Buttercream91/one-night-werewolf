@@ -557,8 +557,9 @@ export class Room {
   }
 
   // Players submit their action. The step does NOT advance early — we wait
-  // out the full duration so timing leaks no information. The actor's prompt
-  // is cleared so they see "you've acted" until the step ends.
+  // out the full duration so timing leaks no information. Exception: intro
+  // has nothing to leak (everyone is flipping their card), so it can advance
+  // as soon as every pending player has flipped.
   submitNightAction(playerId: string, action: NightAction): ActionResult {
     if (this.phase !== "night") return { ok: false, error: "Not night phase" };
     if (this.paused) return { ok: false, error: "Game is paused" };
@@ -569,6 +570,16 @@ export class Room {
     if (!result.ok) return result;
     this.nightPendingActors.delete(playerId);
     player.prompt = undefined;
+    // Intro: short-circuit when every pending human has flipped. There's no
+    // info leak here — the narrator's whole point is "wait for everyone".
+    if (this.nightStep === "intro" && this.nightPendingActors.size === 0) {
+      if (this.nightStepTimer) {
+        clearTimeout(this.nightStepTimer);
+        this.nightStepTimer = undefined;
+      }
+      this.endNightStep();
+      this.broadcast();
+    }
     return { ok: true };
   }
 
@@ -744,6 +755,19 @@ export class Room {
       nightStep: this.nightStep,
       nightStepEndsAt: this.nightStepEndsAt,
       nightStepVoiceFiles: this.nightStepVoiceFiles,
+      nightIntroFlippedIds:
+        this.nightStep === "intro"
+          ? this.players
+              .filter(
+                (p) =>
+                  !p.spectating &&
+                  !!p.originalRole &&
+                  !p.bot &&
+                  p.connected &&
+                  !this.nightPendingActors.has(p.id),
+              )
+              .map((p) => p.id)
+          : undefined,
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       voteEndsAt: this.voteEndsAt,

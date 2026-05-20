@@ -36,6 +36,15 @@ export function NightPhase({ room, me }: Props) {
 
   const centerMode = computeCenterMode(me.prompt, seerMode);
 
+  const isIntro = room.nightStep === "intro";
+  const flippedIds = room.nightIntroFlippedIds ?? [];
+  // Total active humans who need to flip — same set the server gates on.
+  const flipTotalIds = room.players
+    .filter((p) => !p.spectating && p.connected && !p.bot)
+    .map((p) => p.id);
+  const flippedCount = flippedIds.length;
+  const totalActiveCount = flipTotalIds.length;
+  const iHaveFlipped = flippedIds.includes(me.myId);
   return (
     <div className="space-y-6">
       <div className="panel">
@@ -47,10 +56,19 @@ export function NightPhase({ room, me }: Props) {
               that role.
             </p>
           </div>
-          <div className="text-right">
-            <div className="font-mono text-3xl text-slate-100 tabular-nums">{remaining}s</div>
-            <div className="text-xs text-slate-400">until next role</div>
-          </div>
+          {isIntro ? (
+            <div className="text-right">
+              <div className="font-mono text-2xl text-slate-100 tabular-nums">
+                {flippedCount}/{totalActiveCount}
+              </div>
+              <div className="text-xs text-slate-400">cards face down</div>
+            </div>
+          ) : (
+            <div className="text-right">
+              <div className="font-mono text-3xl text-slate-100 tabular-nums">{remaining}s</div>
+              <div className="text-xs text-slate-400">until next role</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -80,7 +98,23 @@ export function NightPhase({ room, me }: Props) {
       <div className="grid md:grid-cols-[1fr_auto] gap-6 items-start">
         <div className="space-y-6">
           <div className="panel">
-            {me.prompt ? (
+            {isIntro ? (
+              <div className="text-center text-slate-300 py-4">
+                {iHaveFlipped ? (
+                  <p>
+                    Card face down. Waiting for the rest of the table…{" "}
+                    <span className="text-slate-400">
+                      ({flippedCount}/{totalActiveCount})
+                    </span>
+                  </p>
+                ) : (
+                  <p>
+                    Look at your card, then tap it to turn it face down. The night begins
+                    once everyone has flipped.
+                  </p>
+                )}
+              </div>
+            ) : me.prompt ? (
               <ActionForm
                 room={room}
                 me={me}
@@ -99,10 +133,19 @@ export function NightPhase({ room, me }: Props) {
         </div>
         <div className="panel flex flex-col items-center gap-3">
           <span className="text-xs uppercase tracking-wider text-slate-400">Your card</span>
-          {myRole ? (
+          {isIntro && !iHaveFlipped && myRole ? (
+            // During intro the card is a button: tap to flip face-down and
+            // signal ready. The server short-circuits the step once everyone
+            // has flipped.
+            <RoleCard
+              role={myRole}
+              onClick={() => send.nightAction({ kind: "ack" })}
+              caption="Tap to turn face down"
+            />
+          ) : myRole ? (
             <RoleCard role={myRole} />
           ) : me.cardFaceDown ? (
-            <RoleCard faceDown caption="Unknown" />
+            <RoleCard faceDown caption={isIntro ? "Face down" : "Unknown"} />
           ) : (
             <div className="text-slate-400">Loading…</div>
           )}
@@ -331,7 +374,9 @@ const DG_ACT_ROLES_ORDER: Role[] = ["seer", "robber", "troublemaker", "drunk"];
 function moderatorLine(step: NightStep, selectedRoles: Role[]): string {
   switch (step) {
     case "intro":
-      return "Everyone, close your eyes. The night begins. View your card and turn it face down.";
+      return "Everyone, look at your card. Turn it face down when you are ready to begin.";
+    case "night_starts":
+      return "The night begins.";
     case "doppelganger":
       return "Doppelganger, open your eyes and look at another player's card.";
     case "doppelganger_act": {
@@ -362,7 +407,7 @@ function moderatorLine(step: NightStep, selectedRoles: Role[]): string {
     case "insomniac":
       return "Insomniac, open your eyes and look at your card.";
     case "outro":
-      return "Everyone, wake up. The night is over.";
+      return "Everyone wake up, the night will end in 5… 4… 3… 2… 1.";
   }
 }
 
@@ -374,7 +419,7 @@ function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolea
   if (step === "werewolves") return originalRole === "werewolf";
   if (step === "masons") return originalRole === "mason";
   if (step === "doppelganger_act") return originalRole === "doppelganger";
-  if (step === "intro" || step === "outro") return false;
+  if (step === "intro" || step === "night_starts" || step === "outro") return false;
   return originalRole === step;
 }
 

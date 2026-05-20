@@ -22,7 +22,7 @@ interface Props {
 //   seer-center — click toggles selection; on second pick sends seer_view_center.
 //   drunk       — click swaps with player's hand; player's view becomes face-down.
 export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
-  const seenByIndex = peekedCenters(me);
+  const seenByIndex = peekedCenters(me, room);
   // centerCardCount is set once the round begins; before then we don't render
   // (CenterCards is only used in night/day/vote/reveal phases).
   const count = room.centerCardCount ?? 3;
@@ -91,13 +91,27 @@ function labelForMode(mode: CenterMode): string {
   }
 }
 
-// Build a map of centerIndex → revealed role from the player's accumulated notes.
-function peekedCenters(me: PrivateView): Map<number, Role> {
+// Build a map of centerIndex → revealed role from the player's accumulated
+// notes. Peeks are only shown face-up during the role's own night step —
+// after the step ends the centre flips back face-down for that player too,
+// matching real ONUW play where you only see the cards while it's your turn.
+// The notes panel still recalls what was seen so the player can reference it
+// during the day.
+function peekedCenters(me: PrivateView, room: PublicRoom): Map<number, Role> {
   const m = new Map<number, Role>();
+  const step = room.nightStep;
+  if (!step) return m;
+  // Lone wolf peeked → only visible during the werewolves step.
+  const wolfActing = step === "werewolves";
+  // Seer (real or DG-as-Seer) peeked → visible during the seer step OR the
+  // doppelganger_act step (when a DG-as-Seer is the one acting).
+  const seerActing =
+    step === "seer" ||
+    (step === "doppelganger_act" && me.myOriginalRole === "doppelganger");
   for (const n of me.notes) {
-    if (n.kind === "lone_wolf_center") {
+    if (n.kind === "lone_wolf_center" && wolfActing) {
       m.set(n.index, n.role);
-    } else if (n.kind === "seer_center") {
+    } else if (n.kind === "seer_center" && seerActing) {
       for (const c of n.cards) m.set(c.index, c.role);
     }
   }

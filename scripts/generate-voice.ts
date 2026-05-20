@@ -36,7 +36,10 @@ const ROOT_VOICE_DIR = path.resolve("public/voice");
 
 const CLIPS: Record<string, string> = {
   Intro:
-    "Everyone, close your eyes. The night begins. View your card and turn it face down.",
+    "Everyone, look at your card. Turn it face down when you are ready to begin.",
+  // Brief transition clip — plays once every player has flipped, just before
+  // the first role acts.
+  TheNightBegins: "The night begins.",
   Doppelganger:
     "Doppelganger, wake up and look at another player's card. You are now a copy of that role.",
   // Atomic clips for the dynamic doppelganger_act narration. The server picks
@@ -48,7 +51,7 @@ const CLIPS: Record<string, string> = {
   Doppelganger_Act_Troublemaker: "Troublemaker",
   Doppelganger_Act_Drunk: "Drunk",
   Doppelganger_Act_Or: "or",
-  Doppelganger_Act_Suffix: "card, do your action now.",
+  Doppelganger_Act_Suffix: "do your action now.",
   Werewolves:
     "Werewolves, wake up and look for other werewolves. If you are the only werewolf, you may look at one card from the center.",
   // Online play has no table to peek under, so we drop the rulebook's
@@ -64,7 +67,7 @@ const CLIPS: Record<string, string> = {
     "Troublemaker, wake up. You may switch the cards of two other players without looking at them.",
   Drunk: "Drunk, wake up and exchange your card with one of the cards in the center.",
   Insomniac: "Insomniac, wake up and look at your card.",
-  Outro: "Everyone, wake up. The night is over.",
+  Outro: "Everyone wake up, the night will end in 5... 4... 3... 2... 1.",
   BeginVote: "It's time to vote. Choose a player to kill.",
   WerewolvesWin: "The Werewolves win!",
   VillagersWin: "The Villagers win!",

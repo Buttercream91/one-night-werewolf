@@ -10,7 +10,8 @@ interface Props {
 // (intro / outro) that we still want to show so the bar reflects what the
 // narrator is actually saying.
 const STEP_LABEL: Record<NightStep, string> = {
-  intro: "Eyes closed",
+  intro: "Night Begins",
+  night_starts: "Night underway",
   doppelganger: "Doppelganger",
   doppelganger_act: "Doppelganger acts",
   werewolves: "Werewolves",
@@ -28,7 +29,7 @@ const STEP_LABEL: Record<NightStep, string> = {
 // the roles that were selected. Lets us hide skipped steps (e.g. there's no
 // Robber in the deck → don't show a Robber step on the bar).
 function stepInPlay(roles: Role[], step: NightStep): boolean {
-  if (step === "intro" || step === "outro") return true;
+  if (step === "intro" || step === "night_starts" || step === "outro") return true;
   if (step === "doppelganger") return roles.includes("doppelganger");
   if (step === "doppelganger_act") {
     if (!roles.includes("doppelganger")) return false;

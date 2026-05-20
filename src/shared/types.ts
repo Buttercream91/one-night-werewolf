@@ -111,6 +111,11 @@ export interface PublicRoom {
   // Night:
   nightStep?: NightStep;
   nightStepEndsAt?: number; // epoch ms — fixed duration regardless of who's acting
+  // Set only during the intro step. IDs of active players who have flipped
+  // their card face-down. The step advances once everyone is in the list
+  // (the intro waits on this instead of a timer). Used by the client to show
+  // an X/Y "ready" indicator and per-player checkmarks.
+  nightIntroFlippedIds?: string[];
   // Filenames under /voice/<pack>/ to play in sequence at the start of this
   // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
   // the server assembles multiple clips so the narrator can name only the
@@ -192,6 +197,7 @@ export type ActionLogEntry =
 // Order otherwise matches the rulebook for the base game.
 export type NightStep =
   | "intro"
+  | "night_starts"
   | "doppelganger"
   | "doppelganger_act"
   | "werewolves"
@@ -206,6 +212,7 @@ export type NightStep =
 
 export const NIGHT_ORDER: NightStep[] = [
   "intro",
+  "night_starts",
   "doppelganger",
   "doppelganger_act",
   "werewolves",

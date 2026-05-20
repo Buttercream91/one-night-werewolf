@@ -12,6 +12,7 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 // /voice/<pack>/ to each filename.
 const STEP_FILE: Record<NightStep, string | null> = {
   intro: "Intro.mp3",
+  night_starts: "TheNightBegins.mp3",
   doppelganger: "Doppelganger.mp3",
   doppelganger_act: null, // built dynamically by stepFilesFor
   werewolves: "Werewolves.mp3",
@@ -68,14 +69,15 @@ export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
   return file ? [file] : [];
 }
 
-// Should this step play during the night? Intro/outro always do. A role-specific
-// step runs only if at least one card of that role is in the deck — which
-// players can already see in the lobby, so skipping it leaks no information.
-// doppelganger_act only runs when both the Doppelganger AND at least one of
-// Seer/Robber/Troublemaker/Drunk are in the deck — otherwise no DG could ever
-// have something to act on here, so running it would only leak that fact.
+// Should this step play during the night? Intro/night_starts/outro always do.
+// A role-specific step runs only if at least one card of that role is in the
+// deck — which players can already see in the lobby, so skipping it leaks no
+// information. doppelganger_act only runs when both the Doppelganger AND at
+// least one of Seer/Robber/Troublemaker/Drunk are in the deck — otherwise no
+// DG could ever have something to act on here, so running it would only leak
+// that fact.
 export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
-  if (step === "intro" || step === "outro") return true;
+  if (step === "intro" || step === "night_starts" || step === "outro") return true;
   if (step === "doppelganger") return selectedRoles.includes("doppelganger");
   if (step === "doppelganger_act") {
     if (!selectedRoles.includes("doppelganger")) return false;
@@ -93,7 +95,12 @@ export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
 // Intro is now longer because the line includes "View your card and turn it
 // face down" — players need a beat to look at their dealt card.
 export const STEP_SECONDS: Record<NightStep, number> = {
-  intro: 10,
+  // Intro now waits for every active player to flip their card (no fixed
+  // timer); this value is the safety fallback used if a player goes AFK or
+  // a connection drops, so the round doesn't stall forever.
+  intro: 60,
+  // Brief transition: "The Night begins" plays then we advance.
+  night_starts: 3,
   // Pick a player to copy only — the action-buffer that used to live here
   // moved into doppelganger_act for those who copied an actionable role.
   doppelganger: 6,
@@ -106,7 +113,8 @@ export const STEP_SECONDS: Record<NightStep, number> = {
   troublemaker: 15,
   drunk: 9,
   insomniac: 7,
-  outro: 4,
+  // Longer than before to fit the "...night will end in 5... 4... 3... 2... 1" line.
+  outro: 8,
 };
 
 // Action applied to actors who don't submit before their step ends.
@@ -163,6 +171,8 @@ export function defaultActionFor(
       return { kind: "drunk_swap", centerIndex: idx };
     }
     case "intro":
+      return { kind: "ack" }; // flips the player's card face-down
+    case "night_starts":
     case "outro":
       return { kind: "ack" }; // never used (no pending actors)
   }
@@ -173,7 +183,21 @@ export function defaultActionFor(
 // If no players act this step, leaves pending empty (caller still waits the
 // step's full duration, then advances — that's how unfilled roles stay hidden).
 export function setupNightStep(room: Room, step: NightStep) {
-  if (step === "intro" || step === "outro") return;
+  if (step === "outro" || step === "night_starts") return;
+
+  // Intro waits for every active connected human player to flip their card.
+  // Bots and disconnected players are skipped so they don't block the step;
+  // the safety timer in STEP_SECONDS.intro still bounds the wait if everyone
+  // who's online has acted but a player is stuck on a bad connection.
+  if (step === "intro") {
+    for (const p of room.players) {
+      if (p.spectating || !p.originalRole) continue;
+      if (p.bot) continue;
+      if (!p.connected) continue;
+      room.nightPendingActors.add(p.id);
+    }
+    return;
+  }
 
   // doppelganger_act is special: it only ever has at most one actor — the DG —
   // and we drive the prompt off doppelgangerCopied (set during the previous
@@ -338,6 +362,15 @@ export function applyNightAction(
 
   switch (action.kind) {
     case "ack": {
+      // Intro: any non-spectator player can ack to confirm they've flipped
+      // their card face-down. No role check — everyone flips at the start.
+      // Flip their card now so their own UI matches the "Face down" copy
+      // they'll see immediately after submitting (without waiting for the
+      // rest of the table).
+      if (step === "intro" && !player.spectating) {
+        player.cardFaceDown = true;
+        return { ok: true };
+      }
       const validAck =
         (step === "werewolves" && effectiveActorsForRole(room, "werewolf").length >= 2 && isEffective(player, "werewolf")) ||
         (step === "minion" && isEffective(player, "minion")) ||
