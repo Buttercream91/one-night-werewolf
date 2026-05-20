@@ -244,6 +244,8 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return `Looked at ${nameOf(n.targetId)} — ${label(n.role)}.`;
     case "dream_wolf_seen":
       return "Dream Wolf — stayed asleep.";
+    case "dream_wolves_in_play":
+      return `Dream wolves (asleep): ${n.playerIds.map(nameOf).join(", ")}.`;
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":

@@ -403,6 +403,11 @@ export type NightNote =
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
+  // Daybreak — pushed alongside fellow_werewolves / minion_sees_werewolves
+  // when at least one Dream Wolf is in play, so the awake wolves and the
+  // Minion know which "wolves" in their team list don't know they are wolves.
+  // Distinct from dream_wolf_seen (which is the Dream Wolf's own self-note).
+  | { kind: "dream_wolves_in_play"; playerIds: string[] }
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
   | { kind: "lone_wolf_center"; index: number; role: Role }

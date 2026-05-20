@@ -125,6 +125,13 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
       );
     case "dream_wolf_seen":
       return <>You stayed asleep — the wolves can see you.</>;
+    case "dream_wolves_in_play":
+      return (
+        <>
+          Dream wolf (asleep — doesn't know):{" "}
+          <PlayerList ids={n.playerIds} room={room} />.
+        </>
+      );
     case "doppelganger_copied":
       return (
         <>

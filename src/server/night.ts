@@ -101,13 +101,6 @@ function isDreamWolfRole(p: ServerPlayer): boolean {
   return false;
 }
 
-// Every player on the wolf team for visibility purposes (awake + dream).
-// Used by the Werewolves step to assemble the "fellow wolves" note and by
-// the Minion step to show every wolf the Minion is helping.
-function allWolves(room: Room): ServerPlayer[] {
-  return room.players.filter((p) => isAwakeWolf(p) || isDreamWolfRole(p));
-}
-
 // Returns the ordered list of voice clips to play at the start of a step. The
 // list is normally a single-element array; doppelganger_act assembles a
 // dynamic phrase like:
@@ -379,6 +372,7 @@ export function setupNightStep(room: Room, step: NightStep) {
       // visibility purposes but don't wake. Both contribute to the "wolves
       // in play" count used for the lone-wolf-peek check.
       const dreamWolves = room.players.filter((p) => isDreamWolfRole(p));
+      const dreamWolfIds = dreamWolves.map((d) => d.id);
       const all = [...actors, ...dreamWolves];
       // Reveal-time log lists every wolf, including dream wolves, so the
       // table can reconstruct the wolf-team membership during the recap.
@@ -388,8 +382,20 @@ export function setupNightStep(room: Room, step: NightStep) {
       });
       const isOnlyOneWolf = all.length === 1;
       for (const w of actors) {
-        const others = all.filter((o) => o.id !== w.id).map((o) => o.id);
-        w.notes.push({ kind: "fellow_werewolves", playerIds: others });
+        // fellow_werewolves now only lists OTHER AWAKE wolves — the players
+        // who saw you and know they're wolves themselves. Dream wolves go
+        // into a separate dream_wolves_in_play note so the awake wolf knows
+        // they're wolves who don't realise they're wolves.
+        const fellowAwake = actors
+          .filter((o) => o.id !== w.id)
+          .map((o) => o.id);
+        w.notes.push({ kind: "fellow_werewolves", playerIds: fellowAwake });
+        if (dreamWolfIds.length > 0) {
+          w.notes.push({
+            kind: "dream_wolves_in_play",
+            playerIds: dreamWolfIds,
+          });
+        }
         // Lone-wolf centre peek only applies to a real Werewolf (or DG copy
         // of one). Alpha / Mystic Wolves don't get the peek per the rules,
         // and a Dream Wolf in play removes lone status entirely (the user
@@ -473,17 +479,32 @@ export function setupNightStep(room: Room, step: NightStep) {
       return;
     }
     case "minion": {
-      // Daybreak: the Minion sees EVERY wolf (Werewolf/Alpha/Mystic/Dream and
-      // DG copies of any), not just real Werewolves.
-      const wolves = allWolves(room).map((p) => p.id);
+      // Daybreak: the Minion sees every wolf (Werewolf/Alpha/Mystic/Dream
+      // and DG copies of any). Split awake-vs-dream into separate notes so
+      // the Minion knows which wolves don't realise they're wolves.
+      const awakeWolfIds = room.players
+        .filter((p) => isAwakeWolf(p))
+        .map((p) => p.id);
+      const dreamWolfIds = room.players
+        .filter((p) => isDreamWolfRole(p))
+        .map((p) => p.id);
+      const allWolfIds = [...awakeWolfIds, ...dreamWolfIds];
       for (const m of actors) {
-        m.notes.push({ kind: "minion_sees_werewolves", playerIds: wolves });
+        m.notes.push({ kind: "minion_sees_werewolves", playerIds: awakeWolfIds });
+        if (dreamWolfIds.length > 0) {
+          m.notes.push({ kind: "dream_wolves_in_play", playerIds: dreamWolfIds });
+        }
         m.prompt = ack(
-          wolves.length === 0
+          allWolfIds.length === 0
             ? "You are the Minion. There are no Werewolves in play — protect the center."
             : "You are the Minion. You see the Werewolves; they do not see you.",
         );
-        room.actionLog.push({ kind: "minion_saw_werewolves", actorId: m.id, werewolfIds: wolves });
+        // Reveal log keeps the full wolf list for the table recap.
+        room.actionLog.push({
+          kind: "minion_saw_werewolves",
+          actorId: m.id,
+          werewolfIds: allWolfIds,
+        });
         room.nightPendingActors.add(m.id);
       }
       return;
