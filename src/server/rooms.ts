@@ -1034,17 +1034,28 @@ export class Room {
   }
 
   // Toggle a role's "do not use this round" flag. Excluded roles are skipped
-  // by Randomise + the priority-list auto-add. Doesn't strip the role from
-  // selectedRoles if it's already there — that's intentional, the host can
-  // pre-fill with a manual pick and then exclude future auto-additions.
+  // by Randomise + the priority-list auto-add. Excluding a role that's
+  // currently in selectedRoles also strips every copy of it from the deck
+  // (Masons are paired, so both get dropped) and runs autoAdjustDeck to top
+  // the deck back up with the next priority slot.
   setRoleExcluded(hostId: string, role: Role, excluded: boolean): ActionResult {
     if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
     if (this.phase !== "lobby") {
       return { ok: false, error: "Only configurable in the lobby" };
     }
     if (!ROLE_META[role]) return { ok: false, error: "Unknown role" };
-    if (excluded) this.excludedRoles.add(role);
-    else this.excludedRoles.delete(role);
+    // Werewolf can't be excluded — it's the always-on seed.
+    if (role === "werewolf" && excluded) {
+      return { ok: false, error: "Werewolf is always in the deck" };
+    }
+    if (excluded) {
+      this.excludedRoles.add(role);
+      const before = this.selectedRoles.length;
+      this.selectedRoles = this.selectedRoles.filter((r) => r !== role);
+      if (this.selectedRoles.length !== before) this.autoAdjustDeck();
+    } else {
+      this.excludedRoles.delete(role);
+    }
     return { ok: true };
   }
 

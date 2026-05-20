@@ -10,6 +10,7 @@ import {
   VOICE_PACKS,
   WOLF_ROLES,
 } from "../../shared/types.js";
+import { playJoinSound, playLeaveSound } from "../lobbySounds.js";
 import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
@@ -52,6 +53,37 @@ export function Lobby({ room, me }: Props) {
 
   const counts: Partial<Record<Role, number>> = {};
   for (const r of room.selectedRoles) counts[r] = (counts[r] ?? 0) + 1;
+
+  // Audible join / leave chimes — diff the player-IDs from the last render
+  // against the current set. First render skipped so we don't fire on the
+  // existing roster as you load in. Lobby phase only.
+  const prevPlayerIdsRef = useRef<Set<string> | null>(null);
+  const playerIdsKey = useMemo(
+    () =>
+      room.players
+        .map((p) => p.id)
+        .sort()
+        .join(","),
+    [room.players],
+  );
+  useEffect(() => {
+    if (room.phase !== "lobby") {
+      prevPlayerIdsRef.current = null;
+      return;
+    }
+    const currentIds = new Set(room.players.map((p) => p.id));
+    const previousIds = prevPlayerIdsRef.current;
+    if (previousIds) {
+      for (const id of currentIds) {
+        if (!previousIds.has(id)) playJoinSound();
+      }
+      for (const id of previousIds) {
+        if (!currentIds.has(id)) playLeaveSound();
+      }
+    }
+    prevPlayerIdsRef.current = currentIds;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerIdsKey, room.phase]);
 
   function setCount(role: Role, n: number) {
     if (!isHost) return;
