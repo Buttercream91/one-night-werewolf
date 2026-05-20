@@ -12,6 +12,7 @@ interface Props {
 const STEP_LABEL: Record<NightStep, string> = {
   intro: "Eyes closed",
   doppelganger: "Doppelganger",
+  doppelganger_act: "Doppelganger acts",
   werewolves: "Werewolves",
   minion: "Minion",
   masons: "Masons",
@@ -29,6 +30,15 @@ const STEP_LABEL: Record<NightStep, string> = {
 function stepInPlay(roles: Role[], step: NightStep): boolean {
   if (step === "intro" || step === "outro") return true;
   if (step === "doppelganger") return roles.includes("doppelganger");
+  if (step === "doppelganger_act") {
+    if (!roles.includes("doppelganger")) return false;
+    return (
+      roles.includes("seer") ||
+      roles.includes("robber") ||
+      roles.includes("troublemaker") ||
+      roles.includes("drunk")
+    );
+  }
   const role: Role =
     step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
   return roles.includes(role);

@@ -26,7 +26,7 @@ room.selectedRoles = [
   "minion",
 ];
 
-const start = room.startGame();
+const start = room.startGame({ skipReadyCheck: true });
 if (!start.ok) {
   console.error("startGame failed:", start.error);
   process.exit(1);
@@ -97,7 +97,7 @@ room.selectedRoles = [
   "villager",
   "minion",
 ];
-const s2 = room.startGame();
+const s2 = room.startGame({ skipReadyCheck: true });
 if (!s2.ok) {
   console.error(s2.error);
   process.exit(1);

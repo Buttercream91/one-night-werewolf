@@ -35,9 +35,20 @@ const VOICE_SETTINGS = {
 const ROOT_VOICE_DIR = path.resolve("public/voice");
 
 const CLIPS: Record<string, string> = {
-  Intro: "Everyone, close your eyes. The night begins.",
+  Intro:
+    "Everyone, close your eyes. The night begins. View your card and turn it face down.",
   Doppelganger:
     "Doppelganger, wake up and look at another player's card. You are now a copy of that role.",
+  // Atomic clips for the dynamic doppelganger_act narration. The server picks
+  // which Role clips to include based on the deck and the client plays
+  // [Prefix, Role1, (Or, before last), ..., Suffix] back-to-back.
+  Doppelganger_Act_Prefix: "If you viewed the",
+  Doppelganger_Act_Seer: "Seer",
+  Doppelganger_Act_Robber: "Robber",
+  Doppelganger_Act_Troublemaker: "Troublemaker",
+  Doppelganger_Act_Drunk: "Drunk",
+  Doppelganger_Act_Or: "or",
+  Doppelganger_Act_Suffix: "card, do your action now.",
   Werewolves:
     "Werewolves, wake up and look for other werewolves. If you are the only werewolf, you may look at one card from the center.",
   // Online play has no table to peek under, so we drop the rulebook's

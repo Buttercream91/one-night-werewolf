@@ -106,10 +106,12 @@ export interface PublicRoom {
   // Night:
   nightStep?: NightStep;
   nightStepEndsAt?: number; // epoch ms — fixed duration regardless of who's acting
-  // Filename under /voice/<pack>/ to play at the start of this step (e.g.
-  // "Werewolves.mp3"). Each player resolves their own pack from local
+  // Filenames under /voice/<pack>/ to play in sequence at the start of this
+  // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
+  // the server assembles multiple clips so the narrator can name only the
+  // roles in play this round. Each player resolves their own pack from local
   // preference so different players hear different narrators.
-  nightStepVoiceFile?: string;
+  nightStepVoiceFiles?: string[];
   // Day:
   dayEndsAt?: number; // epoch ms
   daySeconds?: number; // configured length
@@ -178,10 +180,15 @@ export type ActionLogEntry =
 // "intro" plays "Everyone close your eyes"; "outro" plays "Everyone wake up".
 // Both are no-action steps that exist only to play their audio.
 // "doppelganger" runs first per the rulebook — picks a player and copies them.
+// "doppelganger_act" runs immediately after so a Doppelganger who copied a
+// Seer/Robber/Troublemaker/Drunk can take that role's action right away,
+// before the real holder of that role wakes. Skipped if no DG is in play, or
+// if none of those four active roles are in the deck.
 // Order otherwise matches the rulebook for the base game.
 export type NightStep =
   | "intro"
   | "doppelganger"
+  | "doppelganger_act"
   | "werewolves"
   | "minion"
   | "masons"
@@ -195,6 +202,7 @@ export type NightStep =
 export const NIGHT_ORDER: NightStep[] = [
   "intro",
   "doppelganger",
+  "doppelganger_act",
   "werewolves",
   "minion",
   "masons",
@@ -261,6 +269,11 @@ export interface DevVision {
 }
 
 export type NightNote =
+  // Pushed at deal time so each player has a record of the card they were
+  // originally given. Surfaces in the notes panel from the moment the round
+  // starts, so once the card flips face-down they can still see what they were
+  // dealt.
+  | { kind: "starting_role"; role: Role }
   | { kind: "doppelganger_copied"; targetId: string; role: Role }
   | { kind: "fellow_werewolves"; playerIds: string[] }
   | { kind: "lone_wolf_center"; index: number; role: Role }

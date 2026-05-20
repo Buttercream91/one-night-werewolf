@@ -24,7 +24,7 @@ import {
   isStepInPlay,
   setupNightStep,
   STEP_SECONDS,
-  stepFileFor,
+  stepFilesFor,
 } from "./night.js";
 import { resolveVotes } from "./vote.js";
 
@@ -116,7 +116,7 @@ export class Room {
   currentRoles = new Map<string, Role>(); // playerId -> live role
   nightStep?: NightStep;
   nightStepEndsAt?: number;
-  nightStepVoiceFile?: string;
+  nightStepVoiceFiles?: string[];
   nightStepTimer?: NodeJS.Timeout;
   nightPendingActors = new Set<string>();
   dayEndsAt?: number;
@@ -334,7 +334,12 @@ export class Room {
     this.originalCenterCards = this.centerCards.slice();
     this.currentRoles.clear();
     for (const p of activePlayers) {
-      if (p.originalRole) this.currentRoles.set(p.id, p.originalRole);
+      if (p.originalRole) {
+        this.currentRoles.set(p.id, p.originalRole);
+        // Persistent "You are the X" note so once the card flips face-down
+        // the player can still recall what they were dealt.
+        p.notes.push({ kind: "starting_role", role: p.originalRole });
+      }
     }
     this.killedIds = [];
     this.winners = undefined;
@@ -371,7 +376,7 @@ export class Room {
     this.currentRoles.clear();
     this.nightStep = undefined;
     this.nightStepEndsAt = undefined;
-    this.nightStepVoiceFile = undefined;
+    this.nightStepVoiceFiles = undefined;
     this.nightPendingActors.clear();
     this.dayEndsAt = undefined;
     this.killedIds = [];
@@ -421,7 +426,7 @@ export class Room {
     setupNightStep(this, step);
     const ms = (STEP_SECONDS[step] * 1000) / Math.max(1, this.devSpeedMultiplier);
     this.nightStepEndsAt = Date.now() + ms;
-    this.nightStepVoiceFile = stepFileFor(step);
+    this.nightStepVoiceFiles = stepFilesFor(step, this.selectedRoles);
     if (this.nightStepTimer) clearTimeout(this.nightStepTimer);
     this.nightStepTimer = setTimeout(() => {
       this.endNightStep();
@@ -446,18 +451,109 @@ export class Room {
       // Doppelganger needs a fallback target if they didn't pick. Grab any other player.
       const fallbackTargetId =
         step === "doppelganger"
-          ? this.players.find((p) => p.id !== player.id)?.id
+          ? this.players.find((p) => p.id !== player.id && !p.spectating)?.id
           : undefined;
-      const action = defaultActionFor(step, isLoneWolf, fallbackTargetId);
+      const action = defaultActionFor(
+        step,
+        isLoneWolf,
+        fallbackTargetId,
+        player.doppelgangerCopied,
+      );
       applyNightAction(this, player, action);
       player.prompt = undefined;
     }
     this.nightPendingActors.clear();
+    // Card-flip housekeeping. After intro every active player's card flips
+    // face-down (it was face-up for the dealt-card reveal). After any acting
+    // step the actor's card flips face-down too — they got a brief look
+    // during the step but otherwise should be staring at the card back. The
+    // exception is the Insomniac, who keeps their card face-up through the
+    // rest of the round so they can see it during day/vote.
+    this.applyEndOfStepCardFlips(step);
     this.nightStep = nextNightStep(step);
     this.nightStepEndsAt = undefined;
-    this.nightStepVoiceFile = undefined;
+    this.nightStepVoiceFiles = undefined;
     // runNightStep() will skip past any further unselected role steps.
     this.runNightStep();
+  }
+
+  // Card visibility rules at the end of each night step. See endNightStep().
+  private applyEndOfStepCardFlips(step: NightStep) {
+    if (step === "intro") {
+      for (const p of this.players) {
+        if (p.spectating) continue;
+        if (!p.originalRole) continue;
+        p.cardFaceDown = true;
+      }
+      return;
+    }
+    if (step === "insomniac") {
+      // Insomniac (and DG-as-Insomniac) keeps their card face-up afterwards.
+      for (const p of this.players) {
+        if (p.spectating) continue;
+        const isInsomniacActor =
+          p.originalRole === "insomniac" ||
+          (p.originalRole === "doppelganger" && p.doppelgangerCopied === "insomniac");
+        if (isInsomniacActor) p.cardFaceDown = false;
+      }
+      return;
+    }
+    // Every other acting step: any actor (real or DG-copy) flips back to
+    // face-down after their brief reveal. Drunk swaps already set the flag
+    // true and stay that way; we leave them alone.
+    if (
+      step === "doppelganger" ||
+      step === "doppelganger_act" ||
+      step === "werewolves" ||
+      step === "minion" ||
+      step === "masons" ||
+      step === "seer" ||
+      step === "robber" ||
+      step === "troublemaker" ||
+      step === "drunk"
+    ) {
+      for (const p of this.players) {
+        if (p.spectating) continue;
+        if (!p.originalRole) continue;
+        if (p.cardFaceDown) continue;
+        // Only flip the actors of this step (so a player who didn't wake on
+        // this step doesn't get retroactively masked — they were already
+        // face-down from intro).
+        const acted = this.actedOnStep(p, step);
+        if (acted) p.cardFaceDown = true;
+      }
+    }
+  }
+
+  // True if `player` was an actor on `step` — used to decide whose card to
+  // flip face-down at step end. Mirrors the actor selection inside night.ts
+  // but doesn't need to import it (just role identity + DG copy).
+  private actedOnStep(p: ServerPlayer, step: NightStep): boolean {
+    if (!p.originalRole) return false;
+    if (step === "doppelganger") return p.originalRole === "doppelganger";
+    if (step === "doppelganger_act") {
+      return (
+        p.originalRole === "doppelganger" &&
+        !!p.doppelgangerCopied &&
+        ["seer", "robber", "troublemaker", "drunk"].includes(p.doppelgangerCopied)
+      );
+    }
+    const target: Role =
+      step === "werewolves"
+        ? "werewolf"
+        : step === "masons"
+          ? "mason"
+          : (step as Role);
+    if (p.originalRole === target) return true;
+    // DG copies of werewolf/minion/mason/insomniac still act on those steps.
+    if (
+      p.originalRole === "doppelganger" &&
+      p.doppelgangerCopied === target &&
+      !["seer", "robber", "troublemaker", "drunk"].includes(target)
+    ) {
+      return true;
+    }
+    return false;
   }
 
   // Players submit their action. The step does NOT advance early — we wait
@@ -646,7 +742,7 @@ export class Room {
       selectedRoles: this.selectedRoles,
       nightStep: this.nightStep,
       nightStepEndsAt: this.nightStepEndsAt,
-      nightStepVoiceFile: this.nightStepVoiceFile,
+      nightStepVoiceFiles: this.nightStepVoiceFiles,
       dayEndsAt: this.dayEndsAt,
       daySeconds: this.daySeconds,
       voteEndsAt: this.voteEndsAt,

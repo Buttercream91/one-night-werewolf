@@ -91,6 +91,8 @@ export function NotesPanel({ me, room, allowAdding = true, className = "" }: Pro
 
 function describeNote(n: PrivateView["notes"][number], nameOf: (id: string) => string): string {
   switch (n.kind) {
+    case "starting_role":
+      return `You are the ${ROLE_META[n.role].label}.`;
     case "doppelganger_copied":
       return `You copied ${nameOf(n.targetId)} and became ${ROLE_META[n.role].label}.`;
     case "fellow_werewolves":

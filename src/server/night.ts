@@ -3,14 +3,17 @@ import type { Room, ServerPlayer } from "./rooms.js";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-// Per-step audio filename (lives under public/voice/<pack>/ for every pack).
-// Played at the start of the step on every player's device. SAME for everyone
-// whether or not the role is filled, so unfilled roles can't be detected by
-// timing. Each client picks its own pack from local preference and joins
-// /voice/<pack>/ + this filename to get the URL it plays.
+// Per-step audio filename(s) under public/voice/<pack>/ for every pack. Most
+// steps are one fixed clip — same for everyone whether or not the role is
+// filled, so unfilled roles can't be detected by timing. doppelganger_act is
+// special: the server assembles a sequence from atomic clips so the narrator
+// only names the actionable roles that are actually in the deck this round.
+// Each client picks its own pack from local preference and prepends
+// /voice/<pack>/ to each filename.
 const STEP_FILE: Record<NightStep, string | null> = {
   intro: "Intro.mp3",
   doppelganger: "Doppelganger.mp3",
+  doppelganger_act: null, // built dynamically by stepFilesFor
   werewolves: "Werewolves.mp3",
   minion: "Minion.mp3",
   masons: "Mason.mp3",
@@ -22,16 +25,62 @@ const STEP_FILE: Record<NightStep, string | null> = {
   outro: "Outro.mp3",
 };
 
-export function stepFileFor(step: NightStep): string | undefined {
-  return STEP_FILE[step] ?? undefined;
+// Roles eligible for the doppelganger_act step, in the order the narrator
+// reads them. Matches the rulebook night order for those four roles.
+const DG_ACT_ROLES = ["seer", "robber", "troublemaker", "drunk"] as const;
+type DgActRole = (typeof DG_ACT_ROLES)[number];
+
+function isDgActRole(role: Role | undefined): role is DgActRole {
+  return (DG_ACT_ROLES as readonly Role[]).includes(role as Role);
+}
+
+const DG_ACT_ROLE_CLIP: Record<DgActRole, string> = {
+  seer: "Doppelganger_Act_Seer.mp3",
+  robber: "Doppelganger_Act_Robber.mp3",
+  troublemaker: "Doppelganger_Act_Troublemaker.mp3",
+  drunk: "Doppelganger_Act_Drunk.mp3",
+};
+
+// Returns the ordered list of voice clips to play at the start of a step. The
+// list is normally a single-element array; doppelganger_act assembles a
+// dynamic phrase like:
+//   [Prefix, Seer, Or, Robber, Suffix]  (two roles)
+//   [Prefix, Seer, Robber, Or, Drunk, Suffix]  (three+ roles)
+//   [Prefix, Seer, Suffix]  (one role)
+// Returns an empty array when the step has no audio (shouldn't happen — every
+// step that runs has a clip).
+export function stepFilesFor(step: NightStep, selectedRoles: Role[]): string[] {
+  if (step === "doppelganger_act") {
+    const active = DG_ACT_ROLES.filter((r) => selectedRoles.includes(r));
+    if (active.length === 0) return []; // step gets skipped via isStepInPlay
+    const out = ["Doppelganger_Act_Prefix.mp3"];
+    active.forEach((r, i) => {
+      // Insert "or" between the penultimate and final role for natural speech.
+      if (i === active.length - 1 && active.length >= 2) {
+        out.push("Doppelganger_Act_Or.mp3");
+      }
+      out.push(DG_ACT_ROLE_CLIP[r]);
+    });
+    out.push("Doppelganger_Act_Suffix.mp3");
+    return out;
+  }
+  const file = STEP_FILE[step];
+  return file ? [file] : [];
 }
 
 // Should this step play during the night? Intro/outro always do. A role-specific
 // step runs only if at least one card of that role is in the deck — which
 // players can already see in the lobby, so skipping it leaks no information.
+// doppelganger_act only runs when both the Doppelganger AND at least one of
+// Seer/Robber/Troublemaker/Drunk are in the deck — otherwise no DG could ever
+// have something to act on here, so running it would only leak that fact.
 export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
   if (step === "intro" || step === "outro") return true;
   if (step === "doppelganger") return selectedRoles.includes("doppelganger");
+  if (step === "doppelganger_act") {
+    if (!selectedRoles.includes("doppelganger")) return false;
+    return DG_ACT_ROLES.some((r) => selectedRoles.includes(r));
+  }
   const role: Role =
     step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
   return selectedRoles.includes(role);
@@ -41,9 +90,12 @@ export function isStepInPlay(selectedRoles: Role[], step: NightStep): boolean {
 // Empty steps wait the same as filled ones so players can't tell which roles
 // are unfilled by how fast the night transitions.
 // Audio durations measured from the MP3 files; buffer added for action time.
+// Intro is now longer because the line includes "View your card and turn it
+// face down" — players need a beat to look at their dealt card.
 export const STEP_SECONDS: Record<NightStep, number> = {
-  intro: 6,
+  intro: 10,
   doppelganger: 14, // ~6s audio + ~8s to pick a player
+  doppelganger_act: 16, // dynamic intro + time to pick a target / centre card
   werewolves: 14,
   minion: 16,
   masons: 8,
@@ -58,16 +110,36 @@ export const STEP_SECONDS: Record<NightStep, number> = {
 // Action applied to actors who don't submit before their step ends.
 // Drunk MUST swap; Doppelganger MUST pick (per rulebook). For Doppelganger we
 // fall back to a random non-self player at the room level (needs the player list).
+// For doppelganger_act the caller must pass the actor's doppelgangerCopied
+// role via `dgCopiedRole` so we know which action shape to default to.
 export function defaultActionFor(
   step: NightStep,
   isLoneWolf: boolean,
   fallbackTargetId?: string,
+  dgCopiedRole?: Role,
 ): NightAction {
   switch (step) {
     case "doppelganger":
       // If we couldn't find a fallback target the action will fail validation;
       // that's fine — it just means the Doppelganger silently gets nothing.
       return { kind: "doppelganger_copy", targetId: fallbackTargetId ?? "" };
+    case "doppelganger_act":
+      // DG defaults mirror the real-role defaults — the same auto-action a
+      // Seer/Robber/Troublemaker/Drunk would get if they timed out.
+      switch (dgCopiedRole) {
+        case "seer":
+          return { kind: "seer_skip" };
+        case "robber":
+          return { kind: "robber_swap", targetId: null };
+        case "troublemaker":
+          return { kind: "troublemaker_swap", targetIds: null };
+        case "drunk": {
+          const idx = Math.floor(Math.random() * 3);
+          return { kind: "drunk_swap", centerIndex: idx };
+        }
+        default:
+          return { kind: "ack" }; // copied a non-actionable role; nothing to do
+      }
     case "werewolves":
       return isLoneWolf ? { kind: "werewolf_lone_view", centerIndex: null } : { kind: "ack" };
     case "minion":
@@ -100,6 +172,15 @@ export function defaultActionFor(
 // step's full duration, then advances — that's how unfilled roles stay hidden).
 export function setupNightStep(room: Room, step: NightStep) {
   if (step === "intro" || step === "outro") return;
+
+  // doppelganger_act is special: it only ever has at most one actor — the DG —
+  // and we drive the prompt off doppelgangerCopied (set during the previous
+  // step). Handle it before the generic actor lookup so we can branch on the
+  // copied role.
+  if (step === "doppelganger_act") {
+    setupDoppelgangerAct(room);
+    return;
+  }
 
   const actors = effectiveActorsForStep(room, step);
   if (actors.length === 0) return;
@@ -229,6 +310,10 @@ export function setupNightStep(room: Room, step: NightStep) {
       for (const i of actors) {
         const current = room.currentRoleOf(i.id);
         i.knownCurrentRole = current;
+        // Insomniac flips their card face-up on their turn — and unlike the
+        // other roles, the card stays face-up for the rest of the round so
+        // they can see it during day/vote (the whole point of the role).
+        i.cardFaceDown = false;
         i.notes.push({ kind: "insomniac_self", role: current });
         i.prompt = ack(`You are the Insomniac. Your card is now: ${labelFor(current)}.`);
         room.actionLog.push({ kind: "insomniac_saw", actorId: i.id, role: current });
@@ -272,6 +357,9 @@ export function applyNightAction(
       player.doppelgangerCopied = copied;
       room.setCurrentRole(player.id, copied);
       player.knownCurrentRole = copied;
+      // Show the copied role on their card briefly; endNightStep will flip
+      // it face-down again at step end.
+      player.cardFaceDown = false;
       player.notes.push({ kind: "doppelganger_copied", targetId: target.id, role: copied });
       room.actionLog.push({
         kind: "doppelganger_copied",
@@ -312,12 +400,12 @@ export function applyNightAction(
     }
 
     case "seer_skip": {
-      if (step !== "seer" || !isEffective(player, "seer")) return { ok: false, error: "Not seer step" };
+      if (!canActAs(player, "seer", step)) return { ok: false, error: "Not seer step" };
       room.actionLog.push({ kind: "seer_skipped", actorId: player.id });
       return { ok: true };
     }
     case "seer_view_player": {
-      if (step !== "seer" || !isEffective(player, "seer")) return { ok: false, error: "Not seer step" };
+      if (!canActAs(player, "seer", step)) return { ok: false, error: "Not seer step" };
       const target = room.players.find((p) => p.id === action.targetId);
       if (!target || target.id === player.id || target.spectating) {
         return { ok: false, error: "Invalid target" };
@@ -333,7 +421,7 @@ export function applyNightAction(
       return { ok: true };
     }
     case "seer_view_center": {
-      if (step !== "seer" || !isEffective(player, "seer")) return { ok: false, error: "Not seer step" };
+      if (!canActAs(player, "seer", step)) return { ok: false, error: "Not seer step" };
       const [a, b] = action.indices;
       const len = room.centerCards.length;
       const validIdx = (i: number) => Number.isInteger(i) && i >= 0 && i < len;
@@ -350,7 +438,7 @@ export function applyNightAction(
     }
 
     case "robber_swap": {
-      if (step !== "robber" || !isEffective(player, "robber")) return { ok: false, error: "Not robber step" };
+      if (!canActAs(player, "robber", step)) return { ok: false, error: "Not robber step" };
       if (action.targetId === null) {
         room.actionLog.push({ kind: "robber_skipped", actorId: player.id });
         return { ok: true };
@@ -365,6 +453,8 @@ export function applyNightAction(
       room.swapPlayerRoles(player.id, target.id);
       const newRole = room.currentRoleOf(player.id);
       player.knownCurrentRole = newRole;
+      // Brief reveal of the stolen card — endNightStep flips face-down.
+      player.cardFaceDown = false;
       player.notes.push({ kind: "robber_new_role", targetId: target.id, role: newRole });
       room.actionLog.push({
         kind: "robber_swapped",
@@ -377,7 +467,7 @@ export function applyNightAction(
     }
 
     case "troublemaker_swap": {
-      if (step !== "troublemaker" || !isEffective(player, "troublemaker")) {
+      if (!canActAs(player, "troublemaker", step)) {
         return { ok: false, error: "Not troublemaker step" };
       }
       if (action.targetIds === null) {
@@ -411,7 +501,7 @@ export function applyNightAction(
     }
 
     case "drunk_swap": {
-      if (step !== "drunk" || !isEffective(player, "drunk")) return { ok: false, error: "Not drunk step" };
+      if (!canActAs(player, "drunk", step)) return { ok: false, error: "Not drunk step" };
       if (
         !Number.isInteger(action.centerIndex) ||
         action.centerIndex < 0 ||
@@ -435,11 +525,37 @@ export function applyNightAction(
 
 // "Effective role" = original role OR a Doppelganger who copied that role.
 // Used in actor selection and validation so the Doppelganger acts in the
-// copied role's step exactly as a real X would.
+// copied role's step exactly as a real X would — EXCEPT for the four roles
+// that act in doppelganger_act (Seer/Robber/Troublemaker/Drunk). Those DGs
+// have already acted by the time their copied-role's regular step runs, so
+// they shouldn't be picked up as an actor on it again.
 function isEffective(player: ServerPlayer, role: Role): boolean {
   if (player.originalRole === role) return true;
-  if (player.originalRole === "doppelganger" && player.doppelgangerCopied === role) return true;
+  if (
+    player.originalRole === "doppelganger" &&
+    player.doppelgangerCopied === role &&
+    !isDgActRole(role)
+  ) {
+    return true;
+  }
   return false;
+}
+
+// Accepts an action submitted as `role` during the current step. True when:
+//   - it's the role's real step and the actor is a real (non-DG) holder, OR
+//   - it's doppelganger_act and the actor is a DG who copied that role.
+// Centralises the "is this submission allowed here" check so the per-action
+// validation in applyNightAction stays a one-liner.
+function canActAs(player: ServerPlayer, role: Role, step: NightStep | undefined): boolean {
+  if (!step) return false;
+  if (step === "doppelganger_act") {
+    return player.originalRole === "doppelganger" && player.doppelgangerCopied === role;
+  }
+  // Real-role step: only an actual holder of that role wakes (DG copies of
+  // these four roles are filtered out by isEffective).
+  const expected: NightStep =
+    role === "werewolf" ? "werewolves" : role === "mason" ? "masons" : (role as NightStep);
+  return step === expected && isEffective(player, role);
 }
 
 function effectiveActorsForRole(room: Room, role: Role): ServerPlayer[] {
@@ -451,9 +567,73 @@ function effectiveActorsForStep(room: Room, step: NightStep): ServerPlayer[] {
   if (step === "doppelganger") {
     return room.players.filter((p) => p.originalRole === "doppelganger");
   }
+  if (step === "doppelganger_act") {
+    return room.players.filter(
+      (p) =>
+        p.originalRole === "doppelganger" &&
+        isDgActRole(p.doppelgangerCopied),
+    );
+  }
   const role: Role =
     step === "werewolves" ? "werewolf" : step === "masons" ? "mason" : (step as Role);
   return effectiveActorsForRole(room, role);
+}
+
+// Per-DG prompt setup for the doppelganger_act step. Reuses the existing
+// per-role prompt kinds so the client controls don't need to learn a new
+// shape. Spectators and bots are filtered out of eligible target lists the
+// same way they are for the real-role prompts.
+function setupDoppelgangerAct(room: Room) {
+  const actors = effectiveActorsForStep(room, "doppelganger_act");
+  for (const dg of actors) {
+    const copied = dg.doppelgangerCopied;
+    if (!copied) continue;
+    switch (copied) {
+      case "seer":
+        dg.prompt = {
+          kind: "seer_choose",
+          message:
+            "You copied the Seer. Look at one other player's card OR two of the center cards.",
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      case "robber": {
+        const eligible = room.players
+          .filter((p) => p.id !== dg.id && !p.spectating)
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "robber_choose",
+          message:
+            "You copied the Robber. You may swap your card with another player's and view your new card.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "troublemaker": {
+        const eligible = room.players
+          .filter((p) => p.id !== dg.id && !p.spectating)
+          .map((p) => p.id);
+        dg.prompt = {
+          kind: "troublemaker_choose",
+          message: "You copied the Troublemaker. You may swap two other players' cards.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      }
+      case "drunk":
+        dg.prompt = {
+          kind: "drunk_choose",
+          message:
+            "You copied the Drunk. Swap your card with one of the center cards (you will not see it).",
+        };
+        room.nightPendingActors.add(dg.id);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 function ack(message: string): NightPrompt {

@@ -6,17 +6,40 @@ import { duckMusic, unduckMusic } from "./music.js";
 // players) and SpectatorView (spectators) so both hear the same clip when a
 // new step starts. Single module-level Audio element so we don't double-play.
 //
-// `useStepAudio` returns `true` when the browser blocked autoplay; callers
-// render a "Tap to enable narration" affordance that calls
-// `unlockNarrationAudio()` from a user gesture.
+// `useStepAudio` accepts the URL sequence to play at the start of `step`. For
+// most steps that's a one-element list (e.g. ["/voice/bill/Werewolves.mp3"]);
+// the doppelganger_act step assembles a phrase from atomic clips so the
+// narrator names only the in-play actionable roles. Clips play back-to-back
+// using the single shared audio element.
+//
+// Returns `true` when the browser blocked autoplay; callers render a
+// "Tap to enable narration" affordance that calls `unlockNarrationAudio()`
+// from a user gesture.
 
 let audioUnlocked = false;
 const audioElement: HTMLAudioElement | null =
   typeof Audio === "undefined" ? null : new Audio();
+
+// Active sequence playback state. `queue` holds the upcoming URLs (the current
+// one is already on audioElement.src). When the current clip ends we shift
+// the next one off and play it. `seqId` invalidates a sequence when a newer
+// step starts mid-playback — late `ended` events for the old id are ignored.
+let queue: string[] = [];
+let seqId = 0;
+
 if (audioElement) {
-  // Restore music volume when the narrator clip ends / is interrupted. We
-  // duckMusic() before playing each step's clip; these handlers bring it back.
-  audioElement.addEventListener("ended", () => unduckMusic());
+  audioElement.addEventListener("ended", () => {
+    // Snapshot the id at the moment "ended" fires; if it changes (because a
+    // new step kicked off a fresh sequence), we abandon what's left.
+    const myId = seqId;
+    if (queue.length > 0 && myId === seqId) {
+      const next = queue.shift()!;
+      audioElement.src = next;
+      audioElement.play().catch(() => unduckMusic());
+      return;
+    }
+    unduckMusic();
+  });
   audioElement.addEventListener("pause", () => unduckMusic());
 }
 
@@ -36,7 +59,7 @@ export function unlockNarrationAudio() {
 
 export function useStepAudio(
   step: NightStep | undefined,
-  url: string | undefined,
+  urls: string[] | undefined,
 ): boolean {
   const [blocked, setBlocked] = useState(false);
   const lastStep = useRef<NightStep | undefined>(undefined);
@@ -52,8 +75,12 @@ export function useStepAudio(
   useEffect(() => {
     if (!step || step === lastStep.current) return;
     lastStep.current = step;
-    if (!url || !audioElement) return;
-    audioElement.src = url;
+    if (!urls || urls.length === 0 || !audioElement) return;
+    // Bump the sequence id so a late `ended` from the previous step can't
+    // pop something off the new queue.
+    seqId++;
+    queue = urls.slice(1); // remaining clips after the first
+    audioElement.src = urls[0];
     duckMusic();
     const p = audioElement.play();
     if (p) {
@@ -65,7 +92,7 @@ export function useStepAudio(
         if (!audioUnlocked) setBlocked(true);
       });
     }
-  }, [step, url]);
+  }, [step, urls?.join("|")]);
 
   return blocked;
 }

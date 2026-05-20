@@ -18,10 +18,9 @@ interface Props {
 export function NightPhase({ room, me }: Props) {
   const myRole = me.cardFaceDown ? undefined : (me.myKnownCurrentRole ?? me.myOriginalRole);
   const remaining = useCountdown(room.nightStepEndsAt);
-  const stepUrl = room.nightStepVoiceFile
-    ? `/voice/${loadNarrator() ?? DEFAULT_VOICE_PACK}/${room.nightStepVoiceFile}`
-    : undefined;
-  const audioBlocked = useStepAudio(room.nightStep, stepUrl);
+  const pack = loadNarrator() ?? DEFAULT_VOICE_PACK;
+  const stepUrls = room.nightStepVoiceFiles?.map((f) => `/voice/${pack}/${f}`);
+  const audioBlocked = useStepAudio(room.nightStep, stepUrls);
 
   // The Seer has a sub-mode (player vs center). Keep it here so the CenterCards
   // up top knows when the Seer is in center-pick mode.
@@ -59,7 +58,9 @@ export function NightPhase({ room, me }: Props) {
 
       <div className="panel text-center">
         {room.nightStep && (
-          <p className="text-lg text-indigo-200 heading">{moderatorLine(room.nightStep)}</p>
+          <p className="text-lg text-indigo-200 heading">
+            {moderatorLine(room.nightStep, room.selectedRoles)}
+          </p>
         )}
         {audioBlocked && (
           <button onClick={() => unlockNarrationAudio()} className="mt-3 btn-ghost text-xs">
@@ -323,13 +324,27 @@ function TroublemakerControls({
 }
 
 // On-screen narration that mirrors the audio. Everyone sees the same line for
-// each step regardless of whether the role is in play.
-function moderatorLine(step: NightStep): string {
+// each step regardless of whether the role is in play — except doppelganger_act
+// which only names the actionable roles actually in this round's deck.
+const DG_ACT_ROLES_ORDER: Role[] = ["seer", "robber", "troublemaker", "drunk"];
+
+function moderatorLine(step: NightStep, selectedRoles: Role[]): string {
   switch (step) {
     case "intro":
-      return "Everyone, close your eyes. The night begins.";
+      return "Everyone, close your eyes. The night begins. View your card and turn it face down.";
     case "doppelganger":
       return "Doppelganger, open your eyes and look at another player's card.";
+    case "doppelganger_act": {
+      const active = DG_ACT_ROLES_ORDER.filter((r) => selectedRoles.includes(r)).map(
+        (r) => ROLE_META[r].label,
+      );
+      if (active.length === 0) return ""; // step shouldn't run in this case
+      const list =
+        active.length === 1
+          ? active[0]
+          : active.slice(0, -1).join(", ") + " or " + active[active.length - 1];
+      return `If you viewed the ${list} card, do your action now.`;
+    }
     case "werewolves":
       return "Werewolves, open your eyes and look for other Werewolves.";
     case "minion":
@@ -351,11 +366,14 @@ function moderatorLine(step: NightStep): string {
   }
 }
 
-// Did this *original* role take the current step? Used to label the "you've acted" message.
+// Did this *original* role take the current step? Used to label the "you've
+// acted" message. doppelganger_act fires for the Doppelganger only — the real
+// Seer/Robber/Troublemaker/Drunk still wait for their own steps.
 function actorIsForStep(originalRole: Role, step: NightStep | undefined): boolean {
   if (!step) return false;
   if (step === "werewolves") return originalRole === "werewolf";
   if (step === "masons") return originalRole === "mason";
+  if (step === "doppelganger_act") return originalRole === "doppelganger";
   if (step === "intro" || step === "outro") return false;
   return originalRole === step;
 }

@@ -35,10 +35,9 @@ export function SpectatorView({ room, me }: Props) {
   const visionHidden = !!room.spectatorsBlind;
   // Spectators hear the same narrator clips as active players so they can
   // follow along with the night flow.
-  const stepUrl = room.nightStepVoiceFile
-    ? `/voice/${loadNarrator() ?? DEFAULT_VOICE_PACK}/${room.nightStepVoiceFile}`
-    : undefined;
-  const narrationBlocked = useStepAudio(room.nightStep, stepUrl);
+  const pack = loadNarrator() ?? DEFAULT_VOICE_PACK;
+  const stepUrls = room.nightStepVoiceFiles?.map((f) => `/voice/${pack}/${f}`);
+  const narrationBlocked = useStepAudio(room.nightStep, stepUrls);
 
   return (
     <div className="space-y-6">
@@ -231,6 +230,8 @@ function describeNote(n: NightNote, room: PublicRoom): string {
   const nameOf = (id: string) => room.players.find((p) => p.id === id)?.name ?? "?";
   const label = (r: Role) => ROLE_META[r].label;
   switch (n.kind) {
+    case "starting_role":
+      return `Dealt: ${label(n.role)}.`;
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":
