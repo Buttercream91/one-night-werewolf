@@ -21,6 +21,7 @@ export function Home({ onJoined, onTutorial }: Props) {
       hostName: string;
       playerCount: number;
       spectatorCount: number;
+      phase: import("../../shared/types.js").Phase;
     }>
   >([]);
   const [listLoading, setListLoading] = useState(false);
@@ -179,23 +180,46 @@ export function Home({ onJoined, onTutorial }: Props) {
                   className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <div className="text-sm text-slate-100 truncate">
-                      {r.roomName ?? <span className="text-slate-400 italic">Untitled</span>}{" "}
-                      <span className="font-mono text-xs text-slate-500">{r.code}</span>
+                    <div className="text-sm text-slate-100 truncate flex items-center gap-2">
+                      <span>
+                        {r.roomName ?? <span className="text-slate-400 italic">Untitled</span>}{" "}
+                        <span className="font-mono text-xs text-slate-500">{r.code}</span>
+                      </span>
+                      {r.phase !== "lobby" && (
+                        <span
+                          className="text-[10px] uppercase tracking-wider rounded border border-amber-700 bg-amber-950/50 text-amber-300 px-1.5"
+                          title="A round is in progress — you'll join as a spectator"
+                        >
+                          {r.phase === "night"
+                            ? "Night"
+                            : r.phase === "day"
+                              ? "Day"
+                              : r.phase === "vote"
+                                ? "Vote"
+                                : "Reveal"}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-400">
                       hosted by {r.hostName} · {r.playerCount} player
                       {r.playerCount === 1 ? "" : "s"}
                       {r.spectatorCount > 0 && `, ${r.spectatorCount} spectating`}
+                      {r.phase !== "lobby" && " · join as spectator"}
                     </div>
                   </div>
                   <button
                     className="btn-ghost text-xs px-2 py-1"
                     disabled={busy || !name.trim()}
                     onClick={() => handleJoinFromList(r.code)}
-                    title={!name.trim() ? "Enter your name first" : "Join this lobby"}
+                    title={
+                      !name.trim()
+                        ? "Enter your name first"
+                        : r.phase === "lobby"
+                          ? "Join this lobby"
+                          : "Round in progress — you'll join as a spectator"
+                    }
                   >
-                    Join
+                    {r.phase === "lobby" ? "Join" : "Watch"}
                   </button>
                 </li>
               ))}

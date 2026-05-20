@@ -77,6 +77,22 @@ export function toPublicRoom(room: Room): PublicRoom {
             role,
           }))
         : undefined,
+    // During night/day/vote we leak only the presence of an artifact, not
+    // its kind. At reveal we publish everything.
+    playerArtifacts:
+      room.phase !== "lobby" && room.playerArtifacts.size > 0
+        ? [...room.playerArtifacts.entries()].map(([playerId, kind]) =>
+            room.phase === "reveal"
+              ? { playerId, artifact: kind }
+              : { playerId },
+          )
+        : undefined,
+    artifactMutedIds:
+      room.playerArtifacts.size > 0 && room.phase !== "lobby"
+        ? [...room.playerArtifacts.entries()]
+            .filter(([, kind]) => kind === "mask")
+            .map(([id]) => id)
+        : undefined,
     dayEndsAt: room.dayEndsAt,
     daySeconds: room.daySeconds,
     voteEndsAt: room.voteEndsAt,

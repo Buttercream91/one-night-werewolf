@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Accusation, PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
-import { ROLE_META } from "../../shared/types.js";
+import { ARTIFACT_META, ROLE_META } from "../../shared/types.js";
 import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { useCountdown } from "../useCountdown.js";
@@ -142,6 +142,10 @@ function DayPlayerTile({
         const reveal = (room.publiclyRevealedRoles ?? []).find(
           (r) => r.playerId === player.id,
         );
+        const artifactEntry = (room.playerArtifacts ?? []).find(
+          (a) => a.playerId === player.id,
+        );
+        const muted = (room.artifactMutedIds ?? []).includes(player.id);
         return (
           <>
             <div className="flex items-center justify-between gap-1">
@@ -154,6 +158,26 @@ function DayPlayerTile({
                     title="Shielded by the Sentinel — their card couldn't be touched at night"
                   >
                     🛡
+                  </span>
+                )}
+                {artifactEntry && (
+                  <span
+                    className="ml-1 text-amber-300"
+                    title={
+                      artifactEntry.artifact
+                        ? `Artifact: ${ARTIFACT_META[artifactEntry.artifact].label}`
+                        : "An artifact token is on this player's card"
+                    }
+                  >
+                    🎴
+                  </span>
+                )}
+                {muted && (
+                  <span
+                    className="ml-1 text-rose-300"
+                    title="Silenced by an artifact"
+                  >
+                    🤐
                   </span>
                 )}
               </span>
@@ -178,6 +202,14 @@ function DayPlayerTile({
                   }`}
                 >
                   {ROLE_META[reveal.role].label}
+                </span>
+              </div>
+            )}
+            {artifactEntry?.artifact && (
+              <div className="mt-1.5 inline-flex items-center gap-1 text-xs">
+                <span className="text-slate-400">Artifact:</span>
+                <span className="rounded border border-amber-800 bg-amber-950/60 px-1.5 py-0 text-[0.7rem] text-amber-200 font-medium">
+                  {ARTIFACT_META[artifactEntry.artifact].label}
                 </span>
               </div>
             )}

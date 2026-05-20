@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ActionLogEntry, PublicRoom } from "../../shared/types.js";
+import { ARTIFACT_META } from "../../shared/types.js";
 import { PlayerChip, PlayerList, RoleChip } from "./Chips.js";
 
 interface Props {
@@ -249,6 +250,21 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
         <>
           <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="revealer" />)
           chose not to flip.
+        </>
+      );
+    case "curator_placed":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="curator" />)
+          placed the <span className="text-amber-300 font-medium">{ARTIFACT_META[e.artifact].label}</span>{" "}
+          on <PlayerChip id={e.targetId} room={room} />.
+        </>
+      );
+    case "curator_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="curator" />)
+          didn't place an artifact.
         </>
       );
     case "doppelganger_copied":

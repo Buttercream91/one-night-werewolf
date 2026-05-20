@@ -353,8 +353,12 @@ export function applyAudioMask(room: PublicRoom): void {
   const myCat = me.spectating ? "spectator" : "player";
   const spectatorsMuted = !!room.spectatorsMuted;
   const mutedExceptHost = !!room.mutedExceptHost;
+  // Daybreak — Mask of Muting silences the wearer during day/vote.
+  const mutedByArtifact = (room.artifactMutedIds ?? []).includes(myPlayerId);
   const iAmHost = !!me.isHost;
-  applyLocalSpeak(canSpeak(myCat, room.phase, spectatorsMuted, mutedExceptHost, iAmHost));
+  applyLocalSpeak(
+    canSpeak(myCat, room.phase, spectatorsMuted, mutedExceptHost, mutedByArtifact, iAmHost),
+  );
   for (const [peerId, e] of peers) {
     const peer = room.players.find((p) => p.id === peerId);
     const peerCat = peer?.spectating ? "spectator" : "player";
@@ -370,10 +374,14 @@ function canSpeak(
   phase: Phase,
   spectatorsMuted: boolean,
   mutedExceptHost: boolean,
+  mutedByArtifact: boolean,
   iAmHost: boolean,
 ): boolean {
   if (mutedExceptHost && !iAmHost) return false;
   if (myCat === "spectator" && spectatorsMuted) return false;
+  // Daybreak Mask of Muting — silences the wearer during day and vote.
+  // Reveal still lets them speak (the round is over).
+  if (mutedByArtifact && (phase === "day" || phase === "vote")) return false;
   if (phase === "lobby" || phase === "reveal") return true;
   if (phase === "night") return myCat === "spectator";
   // day or vote — only players speak; spectators are silent listeners.

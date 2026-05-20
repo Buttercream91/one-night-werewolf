@@ -56,6 +56,53 @@ export const WOLF_ROLES: Role[] = [
   "dream_wolf",
 ];
 
+// Daybreak — Curator's artifact tokens. The Curator places one of these on
+// a player's card face-down; it's revealed at the reveal phase. Three of the
+// five change team alignment at win-calculation time; Mask silences the
+// recipient during the day; Void does nothing.
+export type ArtifactKind = "claw" | "cudgel" | "brand" | "mask" | "void";
+export const ARTIFACT_KINDS: ArtifactKind[] = [
+  "claw",
+  "cudgel",
+  "brand",
+  "mask",
+  "void",
+];
+
+export interface ArtifactMeta {
+  kind: ArtifactKind;
+  label: string;
+  description: string;
+}
+
+export const ARTIFACT_META: Record<ArtifactKind, ArtifactMeta> = {
+  claw: {
+    kind: "claw",
+    label: "Claw of the Werewolf",
+    description: "Turns the bearer into a Werewolf at the reveal.",
+  },
+  cudgel: {
+    kind: "cudgel",
+    label: "Cudgel of the Tanner",
+    description: "Turns the bearer into a Tanner at the reveal.",
+  },
+  brand: {
+    kind: "brand",
+    label: "Brand of the Villager",
+    description: "Turns the bearer into a Villager at the reveal.",
+  },
+  mask: {
+    kind: "mask",
+    label: "Mask of Muting",
+    description: "The bearer cannot speak during the day.",
+  },
+  void: {
+    kind: "void",
+    label: "Void of Nothingness",
+    description: "Does nothing.",
+  },
+};
+
 // Required deck size for a given player count. Normally N+3 (one per player
 // plus 3 centre cards). When Alpha Wolf is in the selected deck a 4th centre
 // slot is added at deal time (the horizontal "centre wolf" card the Alpha
@@ -199,6 +246,14 @@ export interface PublicRoom {
   // reveal time) so later artifact-driven team changes don't rewrite what
   // the table publicly saw.
   publiclyRevealedRoles?: Array<{ playerId: string; role: Role }>;
+  // Daybreak — Curator-placed artifacts. During day/vote each entry carries
+  // only the playerId (`artifact` is undefined) so the table can see WHO
+  // has a token but not which one. At the reveal phase the server fills in
+  // `artifact` so everyone learns the kind. The Mask of Muting also
+  // populates artifactMutedIds before the reveal so the WebRTC layer can
+  // silence the bearer without leaking which artifact is muting them.
+  playerArtifacts?: Array<{ playerId: string; artifact?: ArtifactKind }>;
+  artifactMutedIds?: string[];
   // Filenames under /voice/<pack>/ to play in sequence at the start of this
   // step (e.g. ["Werewolves.mp3"]). For dynamic steps like doppelganger_act
   // the server assembles multiple clips so the narrator can name only the
@@ -275,6 +330,13 @@ export type ActionLogEntry =
       publicReveal: boolean;
     }
   | { kind: "revealer_skipped"; actorId: string }
+  | {
+      kind: "curator_placed";
+      actorId: string;
+      targetId: string;
+      artifact: ArtifactKind;
+    }
+  | { kind: "curator_skipped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -484,6 +546,12 @@ export type NightNote =
   // villager-team card face up. The reveal is public + permanent for the
   // rest of the round.
   | { kind: "revealer_revealed_public"; targetId: string; role: Role }
+  // Daybreak — Curator's record of placing an artifact (they don't see
+  // which artifact landed; the server picks).
+  | { kind: "curator_placed_token"; targetId: string }
+  // Pushed to the player who receives an artifact, so they know a token
+  // ended up on their card even though they don't yet know what it is.
+  | { kind: "you_received_artifact" }
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
@@ -567,6 +635,14 @@ export type NightPrompt =
       message: string;
       eligiblePlayerIds: string[];
     }
+  // Daybreak — Curator picks any player (self included) to receive an
+  // artifact token. The artifact itself is server-randomised; the Curator
+  // doesn't see which one was placed.
+  | {
+      kind: "curator_choose";
+      message: string;
+      eligiblePlayerIds: string[];
+    }
   // Daybreak — Paranormal Investigator. picksRemaining is 2 on the first
   // prompt, 1 after a villager-team peek. Drops out as soon as the PI views
   // a non-villager-team role (they become that team) or picks Stop.
@@ -616,7 +692,10 @@ export type NightAction =
   // card one seat left or right. direction: null skips the whole step.
   | { kind: "village_idiot_rotate"; direction: "left" | "right" | null }
   // Daybreak — Revealer flips another player's card face-up. Null = skip.
-  | { kind: "revealer_flip"; targetId: string | null };
+  | { kind: "revealer_flip"; targetId: string | null }
+  // Daybreak — Curator places an artifact face-down on any player (self
+  // included). Server randomly picks which artifact gets placed. Null = skip.
+  | { kind: "curator_place"; targetId: string | null };
 
 export interface ChatMessage {
   id: string;
@@ -665,7 +744,8 @@ export interface ClientToServer {
     cb: (res: { ok: true; code: string; playerId: string } | { ok: false; error: string }) => void,
   ) => void;
   // Lightweight metadata listing for the public lobby browser. Server filters
-  // out private rooms and rooms not in the lobby phase before returning.
+  // out private rooms (only). Mid-game rooms are still listed — joiners land
+  // as spectators while the round plays out.
   "rooms:listPublic": (
     cb: (res: {
       rooms: Array<{
@@ -674,6 +754,7 @@ export interface ClientToServer {
         hostName: string;
         playerCount: number;
         spectatorCount: number;
+        phase: Phase;
       }>;
     }) => void,
   ) => void;

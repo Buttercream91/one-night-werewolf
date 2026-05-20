@@ -201,6 +201,21 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           <RoleChip role={n.role} />.
         </>
       );
+    case "curator_placed_token":
+      return (
+        <>
+          You placed an artifact token on{" "}
+          <PlayerChip id={n.targetId} room={room} />'s card. You don't see
+          which artifact landed.
+        </>
+      );
+    case "you_received_artifact":
+      return (
+        <span className="text-amber-300">
+          🎴 An artifact has been placed on your card. Its effect (if any)
+          activates at the reveal — or sooner.
+        </span>
+      );
     case "doppelganger_copied":
       return (
         <>

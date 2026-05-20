@@ -296,6 +296,8 @@ export function defaultActionFor(
       return { kind: "village_idiot_rotate", direction: null };
     case "revealer":
       return { kind: "revealer_flip", targetId: null };
+    case "curator":
+      return { kind: "curator_place", targetId: null };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
@@ -304,7 +306,6 @@ export function defaultActionFor(
     // Daybreak roles that don't have logic wired yet — fall through to ack
     // so endNightStep doesn't crash on the auto-default. Each will get a
     // dedicated case in its phase.
-    case "curator":
     case "doppelganger_insomniac":
     case "doppelganger_revealer":
     case "doppelganger_curator":
@@ -665,6 +666,29 @@ export function setupNightStep(room: Room, step: NightStep) {
           eligiblePlayerIds: eligible,
         };
         room.nightPendingActors.add(r.id);
+      }
+      return;
+    }
+    case "curator": {
+      for (const c of actors) {
+        // Eligible: any active player (including self), but never a player
+        // who already has an artifact (the DG-Curator sub-step uses the same
+        // exclusion to avoid stacking).
+        const eligible = room.players
+          .filter(
+            (p) =>
+              !p.spectating &&
+              !!p.originalRole &&
+              !room.playerArtifacts.has(p.id),
+          )
+          .map((p) => p.id);
+        c.prompt = {
+          kind: "curator_choose",
+          message:
+            "You are the Curator. Place an artifact token face down on any player's card (including your own). You won't see which artifact landed.",
+          eligiblePlayerIds: eligible,
+        };
+        room.nightPendingActors.add(c.id);
       }
       return;
     }
@@ -1152,6 +1176,51 @@ export function applyNightAction(
         targetId: target.id,
         role,
         publicReveal,
+      });
+      return { ok: true };
+    }
+    case "curator_place": {
+      if (step !== "curator" || original !== "curator") {
+        return { ok: false, error: "Not curator step" };
+      }
+      if (action.targetId === null) {
+        room.actionLog.push({ kind: "curator_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.spectating || !target.originalRole) {
+        return { ok: false, error: "Invalid target" };
+      }
+      // Shield blocks artifact placement — the shielded card can't be touched.
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      if (room.playerArtifacts.has(target.id)) {
+        return { ok: false, error: "That player already has an artifact." };
+      }
+      if (room.artifactPool.length === 0) {
+        return { ok: false, error: "No artifacts left in the pool." };
+      }
+      // Random pick from the remaining pool; consume that entry so the same
+      // artifact can't show up on a later placement (e.g. DG-Curator).
+      const pickIdx = Math.floor(Math.random() * room.artifactPool.length);
+      const artifact = room.artifactPool.splice(pickIdx, 1)[0]!;
+      room.playerArtifacts.set(target.id, artifact);
+      // Curator's own private note records who they targeted, but NOT which
+      // artifact was placed — they don't see that.
+      player.notes.push({
+        kind: "curator_placed_token",
+        targetId: target.id,
+      });
+      // Target also gets a note that an artifact is now on their card.
+      target.notes.push({ kind: "you_received_artifact" });
+      // Reveal-time log entry carries the artifact kind so the final recap
+      // shows what each Curator placed.
+      room.actionLog.push({
+        kind: "curator_placed",
+        actorId: player.id,
+        targetId: target.id,
+        artifact,
       });
       return { ok: true };
     }

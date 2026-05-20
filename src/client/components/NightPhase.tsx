@@ -276,6 +276,9 @@ function ActionForm({
         {prompt.kind === "revealer_choose" && (
           <RevealerControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
         )}
+        {prompt.kind === "curator_choose" && (
+          <CuratorControls room={room} eligibleIds={prompt.eligiblePlayerIds} />
+        )}
       </div>
     </div>
   );
@@ -359,6 +362,42 @@ function AlphaWolfControls({
       <button
         className="btn-ghost"
         onClick={() => send.nightAction({ kind: "alpha_wolf_swap", targetId: null })}
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
+function CuratorControls({
+  room,
+  eligibleIds,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {eligible.map((p) => {
+        const isShielded = shielded.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            className="btn-ghost"
+            disabled={isShielded}
+            title={isShielded ? "Shielded by the Sentinel — can't place an artifact" : undefined}
+            onClick={() => send.nightAction({ kind: "curator_place", targetId: p.id })}
+          >
+            🎴 Place on {p.name}
+            {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+          </button>
+        );
+      })}
+      <button
+        className="btn-ghost"
+        onClick={() => send.nightAction({ kind: "curator_place", targetId: null })}
       >
         Skip
       </button>

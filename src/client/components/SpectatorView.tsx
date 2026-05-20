@@ -266,6 +266,10 @@ function describeNote(n: NightNote, room: PublicRoom): string {
       return `Flipped ${nameOf(n.targetId)} — ${label(n.role)} (stayed hidden).`;
     case "revealer_revealed_public":
       return `${nameOf(n.targetId)} publicly revealed as ${label(n.role)}.`;
+    case "curator_placed_token":
+      return `Placed an artifact on ${nameOf(n.targetId)}'s card (kind unknown to Curator).`;
+    case "you_received_artifact":
+      return "Received an artifact.";
     case "doppelganger_copied":
       return `Copied ${nameOf(n.targetId)} (${label(n.role)}).`;
     case "fellow_werewolves":

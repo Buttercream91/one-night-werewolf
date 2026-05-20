@@ -17,6 +17,7 @@ export function createRoom(
   });
 }
 
+import type { Phase } from "../shared/types.js";
 export function listPublicRooms(): Promise<
   Array<{
     code: string;
@@ -24,6 +25,7 @@ export function listPublicRooms(): Promise<
     hostName: string;
     playerCount: number;
     spectatorCount: number;
+    phase: Phase;
   }>
 > {
   return new Promise((resolve) => {

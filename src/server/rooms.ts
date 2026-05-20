@@ -17,6 +17,8 @@ import type {
   WinnerSide,
 } from "../shared/types.js";
 import {
+  ARTIFACT_KINDS,
+  type ArtifactKind,
   DAYBREAK_ROLES,
   deckTargetSize,
   NIGHT_ORDER,
@@ -167,6 +169,13 @@ export class Room {
   // frozen role at reveal time. The card stays face-up on that player's
   // tile from the day phase onward, visible to every client.
   publiclyRevealedRoles = new Map<string, Role>();
+  // Daybreak — Curator-placed artifacts. Map of playerId → ArtifactKind.
+  // Read by effectiveRoleOf for the role-changing artifacts (Claw / Cudgel
+  // / Brand) and by the day-phase mute logic for the Mask. Pool of artifact
+  // kinds remaining for placement is tracked separately so the same kind
+  // doesn't land twice in one round.
+  playerArtifacts = new Map<string, ArtifactKind>();
+  artifactPool: ArtifactKind[] = [];
   dayEndsAt?: number;
   dayTimer?: NodeJS.Timeout;
   voteEndsAt?: number;
@@ -448,6 +457,13 @@ export class Room {
     this.accusations = [];
     this.shieldedPlayerIds.clear();
     this.publiclyRevealedRoles.clear();
+    this.playerArtifacts.clear();
+    // Seed a fresh artifact pool only when Curator is in the deck. We use
+    // every kind once per round (max placement count = real Curator + DG
+    // copy = 2, so 5 kinds is plenty). Each placement consumes one entry.
+    this.artifactPool = this.selectedRoles.includes("curator")
+      ? [...ARTIFACT_KINDS]
+      : [];
     this.chatMessages = []; // start the new round's chat fresh
 
     this.phase = "night";
@@ -492,6 +508,10 @@ export class Room {
     this.accusations = [];
     this.shieldedPlayerIds.clear();
     this.publiclyRevealedRoles.clear();
+    this.playerArtifacts.clear();
+    // Seed a fresh artifact pool only when a round actually starts. Reset
+    // path leaves it empty until the next startGame.
+    this.artifactPool = [];
     if (this.dayTimer) {
       clearTimeout(this.dayTimer);
       this.dayTimer = undefined;
@@ -929,6 +949,13 @@ export class Room {
   // away. Use this for vote/win logic; use currentRoleOf for physical-card
   // checks (Seer view, Insomniac self-look, swap targets).
   effectiveRoleOf(playerId: string): Role {
+    // Daybreak artifacts trump everything — Claw makes you a Werewolf at
+    // reveal time, Cudgel makes you a Tanner, Brand a Villager. Mask and
+    // Void don't change team.
+    const artifact = this.playerArtifacts.get(playerId);
+    if (artifact === "claw") return "werewolf";
+    if (artifact === "cudgel") return "tanner";
+    if (artifact === "brand") return "villager";
     const p = this.players.find((p) => p.id === playerId);
     if (p?.originalRole === "doppelganger" && p.doppelgangerCopied) {
       return p.doppelgangerCopied;
@@ -1554,14 +1581,17 @@ class RoomRegistry {
   }
 
   // Public-lobby browser snapshot. Returns lightweight metadata for every
-  // non-private room currently in the lobby phase — once a game starts it
-  // disappears from the list.
+  // non-private room, including ones already in a round — joining a non-
+  // lobby room drops you in as a spectator (room:join always starts new
+  // arrivals as spectators, and setSpectator(false) is blocked outside the
+  // lobby, so you can't accidentally land in an active player slot).
   listPublic(): Array<{
     code: string;
     roomName?: string;
     hostName: string;
     playerCount: number;
     spectatorCount: number;
+    phase: Phase;
   }> {
     const out: Array<{
       code: string;
@@ -1569,10 +1599,10 @@ class RoomRegistry {
       hostName: string;
       playerCount: number;
       spectatorCount: number;
+      phase: Phase;
     }> = [];
     for (const room of this.byCode.values()) {
       if (room.privateRoom) continue;
-      if (room.phase !== "lobby") continue;
       const host = room.hostId ? room.players.find((p) => p.id === room.hostId) : null;
       out.push({
         code: room.joinCode,
@@ -1580,6 +1610,7 @@ class RoomRegistry {
         hostName: host?.name ?? "?",
         playerCount: room.players.filter((p) => !p.spectating).length,
         spectatorCount: room.players.filter((p) => p.spectating).length,
+        phase: room.phase,
       });
     }
     // Most recently created (likely most active) first — `byCode` insertion
