@@ -432,17 +432,18 @@ export function setupNightStep(room: Room, step: NightStep) {
       // step only runs when Alpha Wolf is in the deck, but the prompt copes
       // if it's missing.
       const hasHorizontal = room.horizontalCenterIndex !== undefined;
-      // Eligible target: any non-self, non-spectator, non-shielded player
-      // whose effective wolf-team membership is false — Alpha Wolf shouldn't
-      // hand a Werewolf card to another wolf.
+      // Eligible target: any non-self, non-spectator player whose wolf-team
+      // membership is false — Alpha Wolf shouldn't hand a Werewolf card to
+      // another wolf. Shielded players stay in the list so the client can
+      // render them with a 🛡 + disabled state (same pattern as the other
+      // action pickers); the action handler refuses if one is picked.
       const eligible = room.players
         .filter(
           (p) =>
             !p.spectating &&
             !!p.originalRole &&
             !isAwakeWolf(p) &&
-            !isDreamWolfRole(p) &&
-            !room.shieldedPlayerIds.has(p.id),
+            !isDreamWolfRole(p),
         )
         .map((p) => p.id);
       for (const a of actors) {
@@ -460,14 +461,11 @@ export function setupNightStep(room: Room, step: NightStep) {
     }
     case "mystic_wolf": {
       for (const m of actors) {
+        // Shielded players stay in the eligible list so the picker shows
+        // them with a 🛡 + disabled state. The action handler refuses if a
+        // shielded target is somehow picked.
         const eligible = room.players
-          .filter(
-            (p) =>
-              p.id !== m.id &&
-              !p.spectating &&
-              !!p.originalRole &&
-              !room.shieldedPlayerIds.has(p.id),
-          )
+          .filter((p) => p.id !== m.id && !p.spectating && !!p.originalRole)
           .map((p) => p.id);
         m.prompt = {
           kind: "mystic_wolf_choose",
