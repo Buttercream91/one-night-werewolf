@@ -72,6 +72,78 @@ describe("resolveVotes — basic outcomes", () => {
   });
 });
 
+describe("resolveVotes — Daybreak wolf-team kills", () => {
+  test("Killing an Alpha Wolf counts as a wolf-team death (village wins)", () => {
+    const { room, ids } = makeRoom([
+      ["A", "alpha_wolf"],
+      ["B", "seer"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+    expect(r.winners).not.toContain("werewolf");
+  });
+
+  test("Killing a Mystic Wolf counts as a wolf-team death", () => {
+    const { room, ids } = makeRoom([
+      ["A", "mystic_wolf"],
+      ["B", "seer"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+  });
+
+  test("Killing a Dream Wolf counts as a wolf-team death", () => {
+    const { room, ids } = makeRoom([
+      ["A", "dream_wolf"],
+      ["B", "seer"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+  });
+
+  test("DG-as-Alpha-Wolf killed: village wins (the user's bug report)", () => {
+    // Reproduces the exact bug: Alan (DG copied Alpha Wolf) gets killed,
+    // village should win. With the old literal-"werewolf" check the wolves
+    // were winning instead.
+    const { room, ids } = makeRoom([
+      ["A", "doppelganger", "alpha_wolf"],
+      ["B", "alpha_wolf"],
+      ["C", "villager"],
+      ["D", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "B", B: "A", C: "A", D: "A" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([ids.A]);
+    expect(r.winners).toContain("villager");
+  });
+
+  test("Only wolves of Daybreak types in play still counts as 'wolves in play'", () => {
+    // No literal Werewolf, only an Alpha Wolf. Wolves should still be
+    // considered to be in play — if nobody dies, wolves win.
+    const { room, ids } = makeRoom([
+      ["A", "alpha_wolf"],
+      ["B", "seer"],
+      ["C", "villager"],
+    ]);
+    castEveryoneVotes(room, ids, { A: "no_kill", B: "no_kill", C: "no_kill" });
+    const r = resolveVotes(room);
+    expect(r.killedIds).toEqual([]);
+    expect(r.winners).toContain("werewolf");
+  });
+});
+
 describe("resolveVotes — Doppelganger team locking", () => {
   test("DG-as-Werewolf killed → village wins even if DG holds the Doppelganger card", () => {
     // DG's physical card stays "doppelganger"; only doppelgangerCopied marks

@@ -1,5 +1,15 @@
-import type { WinnerSide } from "../shared/types.js";
+import type { Role, WinnerSide } from "../shared/types.js";
+import { WOLF_ROLES } from "../shared/types.js";
 import type { Room } from "./rooms.js";
+
+// "Counts as a wolf" for the village kill-condition and wolves-in-play
+// checks. Includes the Daybreak wolves (Alpha / Mystic / Dream) plus the
+// base Werewolf. The Minion is wolf-team but NEVER counts as a wolf for
+// the kill check — that's by design (killing the Minion alone is a wolf
+// win, not a village win).
+function isWolfKillRole(role: Role): boolean {
+  return WOLF_ROLES.includes(role);
+}
 
 export interface VoteResolution {
   killedIds: string[];
@@ -110,12 +120,14 @@ export function resolveVotes(room: Room): VoteResolution {
   // Win calculation. effectiveRoleOf is the locked-in team identity — for
   // the Doppelganger that's the role they copied, regardless of card swaps.
   // For everyone else it's the role on their physical card (which can change
-  // via Robber/Troublemaker/Drunk).
+  // via Robber/Troublemaker/Drunk). The wolf-kill check looks at WOLF_ROLES
+  // (Werewolf + Daybreak's Alpha/Mystic/Dream), not just the literal
+  // werewolf — killing any wolf-type role earns the village win.
   const killedRoles = new Set(killedIds.map((id) => room.effectiveRoleOf(id)));
-  const werewolvesInPlay = room.players.some(
-    (p) => room.effectiveRoleOf(p.id) === "werewolf",
+  const werewolvesInPlay = room.players.some((p) =>
+    isWolfKillRole(room.effectiveRoleOf(p.id)),
   );
-  const werewolfDied = killedRoles.has("werewolf");
+  const werewolfDied = [...killedRoles].some((r) => isWolfKillRole(r));
   const tannerDied = killedRoles.has("tanner");
 
   const winners = new Set<WinnerSide>();
@@ -129,8 +141,10 @@ export function resolveVotes(room: Room): VoteResolution {
     }
   } else {
     const killedRoles = killedIds.map((id) => room.effectiveRoleOf(id));
+    // Wolfless branch only fires when no wolf-type role is in play, but
+    // be defensive against future role additions by checking via the helper.
     const villagerKilled = killedRoles.some(
-      (r) => r !== "werewolf" && r !== "minion" && r !== "tanner",
+      (r) => !isWolfKillRole(r) && r !== "minion" && r !== "tanner",
     );
     const minionKilled = killedRoles.includes("minion");
 
