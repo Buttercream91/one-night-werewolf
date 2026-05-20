@@ -26,6 +26,18 @@ export const ROLE_IMAGE: Record<Role, string> = {
   hunter: "/images/roles/hunter.jpg",
   tanner: "/images/roles/tanner.jpg",
   villager: "/images/roles/villager.jpg",
+  // Daybreak expansion — PNGs (transparent backgrounds) rather than JPGs.
+  sentinel: "/images/roles/sentinel.png",
+  alpha_wolf: "/images/roles/alpha_wolf.png",
+  mystic_wolf: "/images/roles/mystic_wolf.png",
+  dream_wolf: "/images/roles/dream_wolf.png",
+  apprentice_seer: "/images/roles/apprentice_seer.png",
+  paranormal_investigator: "/images/roles/paranormal_investigator.png",
+  witch: "/images/roles/witch.png",
+  village_idiot: "/images/roles/village_idiot.png",
+  revealer: "/images/roles/revealer.png",
+  curator: "/images/roles/curator.png",
+  bodyguard: "/images/roles/bodyguard.png",
 };
 
 const CARD_BACK = "/images/card-back.jpg";

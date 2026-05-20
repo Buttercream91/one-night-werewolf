@@ -47,6 +47,9 @@ export const send = {
   setColor: (color: string) => socket.emit("lobby:setColor", { color }),
   setRemoveCardLimit: (remove: boolean) =>
     socket.emit("lobby:setRemoveCardLimit", { remove }),
+  setDaybreakEnabled: (enabled: boolean) =>
+    socket.emit("lobby:setDaybreakEnabled", { enabled }),
+  setWolfCap: (cap: number) => socket.emit("lobby:setWolfCap", { cap }),
   lobbyReady: (ready: boolean) => socket.emit("lobby:ready", { ready }),
   kick: (playerId: string) => socket.emit("lobby:kick", { playerId }),
   forceSpectate: (playerId: string, spectating: boolean) =>

@@ -3,6 +3,7 @@
 // game logic has explicitly revealed it.
 
 export type Role =
+  // ---- Base game ----
   | "doppelganger"
   | "werewolf"
   | "minion"
@@ -14,7 +15,46 @@ export type Role =
   | "insomniac"
   | "hunter"
   | "tanner"
-  | "villager";
+  | "villager"
+  // ---- Daybreak expansion ----
+  | "sentinel"
+  | "alpha_wolf"
+  | "mystic_wolf"
+  | "dream_wolf"
+  | "apprentice_seer"
+  | "paranormal_investigator"
+  | "witch"
+  | "village_idiot"
+  | "revealer"
+  | "curator"
+  | "bodyguard";
+
+// Roles introduced by the Daybreak expansion. Listed separately so the lobby
+// can split the role picker into Base / Daybreak tabs and so the random-deck
+// generator can skip them when Daybreak is disabled.
+export const DAYBREAK_ROLES: Role[] = [
+  "sentinel",
+  "alpha_wolf",
+  "mystic_wolf",
+  "dream_wolf",
+  "apprentice_seer",
+  "paranormal_investigator",
+  "witch",
+  "village_idiot",
+  "revealer",
+  "curator",
+  "bodyguard",
+];
+
+// Convenience predicate: every wolf-team role we count toward the wolf cap
+// (the lobby's adjustable max total wolves). Real Werewolf + the three
+// Daybreak wolves; Minion is wolf-team but not a wolf for cap purposes.
+export const WOLF_ROLES: Role[] = [
+  "werewolf",
+  "alpha_wolf",
+  "mystic_wolf",
+  "dream_wolf",
+];
 
 export type Phase = "lobby" | "night" | "day" | "vote" | "reveal";
 
@@ -93,6 +133,15 @@ export interface PublicRoom {
   players: PublicPlayer[];
   // Lobby:
   selectedRoles: Role[]; // multiset; default length must equal active players + 3
+  // Host has enabled the Daybreak expansion in this room. While off, the
+  // Daybreak tab in the lobby is disabled (existing Daybreak picks stay
+  // selectable but can't be added) and the random-deck button ignores
+  // Daybreak roles entirely.
+  daybreakEnabled?: boolean;
+  // Maximum total wolves (Werewolf / Alpha / Mystic / Dream) allowed in the
+  // deck. Default 3. Adjustable from the lobby's role-section menu so hosts
+  // can dial in heavier or lighter wolf metas.
+  wolfCap?: number;
   // Host has lifted the deck-size cap. With the limit removed, the deck can
   // exceed the active-player + 3 default — extras land in the centre at deal
   // time, so fewer-player games can still draw from a larger pool.
@@ -409,6 +458,11 @@ export interface ClientToServer {
   "lobby:setColor": (payload: { color: string }) => void;
   // Host toggles the "deck can exceed players + 3" allowance.
   "lobby:setRemoveCardLimit": (payload: { remove: boolean }) => void;
+  // Host toggles the Daybreak expansion. Disabling it removes any Daybreak
+  // roles currently selected from the deck.
+  "lobby:setDaybreakEnabled": (payload: { enabled: boolean }) => void;
+  // Host adjusts the max-wolves cap (1..5). Clamped server-side.
+  "lobby:setWolfCap": (payload: { cap: number }) => void;
   "lobby:ready": (payload: { ready: boolean }) => void;
   "lobby:kick": (payload: { playerId: string }) => void;
   // Host force-spectates a player (spectating=true) or releases them
@@ -563,6 +617,93 @@ export const ROLE_META: Record<Role, RoleMeta> = {
     team: "villager",
     description: "No special ability. Talk it out and find the wolves.",
     maxCount: 3,
+  },
+  // ---- Daybreak expansion ----
+  sentinel: {
+    role: "sentinel",
+    label: "Sentinel",
+    team: "villager",
+    description:
+      "Acts first. Place a shield token on another player's card — they can't be looked at, swapped or revealed for the rest of the night.",
+    maxCount: 1,
+  },
+  alpha_wolf: {
+    role: "alpha_wolf",
+    label: "Alpha Wolf",
+    team: "werewolf",
+    description:
+      "Wakes with the wolves. Then swaps the centre Werewolf card with another player's card, without looking at either.",
+    maxCount: 1,
+  },
+  mystic_wolf: {
+    role: "mystic_wolf",
+    label: "Mystic Wolf",
+    team: "werewolf",
+    description: "Wakes with the wolves. Then may look at one other player's card.",
+    maxCount: 1,
+  },
+  dream_wolf: {
+    role: "dream_wolf",
+    label: "Dream Wolf",
+    team: "werewolf",
+    description:
+      "Doesn't wake. The other werewolves and the Minion see them as a wolf. A Dream Wolf in play removes lone-wolf status from a single Werewolf.",
+    maxCount: 1,
+  },
+  apprentice_seer: {
+    role: "apprentice_seer",
+    label: "Apprentice Seer",
+    team: "villager",
+    description: "May look at one of the centre cards.",
+    maxCount: 1,
+  },
+  paranormal_investigator: {
+    role: "paranormal_investigator",
+    label: "Paranormal Investigator",
+    team: "villager",
+    description:
+      "May look at up to two other players' cards. If you see a non-villager team role (Werewolf, Minion or Tanner), you stop and become that role's team — you don't get to act again on its turn.",
+    maxCount: 1,
+  },
+  witch: {
+    role: "witch",
+    label: "Witch",
+    team: "villager",
+    description:
+      "May look at one centre card. If you do, you must swap it with any player's card (including yourself).",
+    maxCount: 1,
+  },
+  village_idiot: {
+    role: "village_idiot",
+    label: "Village Idiot",
+    team: "villager",
+    description:
+      "May rotate every other player's card one seat to the left or right. Your own card stays put.",
+    maxCount: 1,
+  },
+  revealer: {
+    role: "revealer",
+    label: "Revealer",
+    team: "villager",
+    description:
+      "May flip another player's card face up for everyone to see. If the card is on the wolf or tanner team, it stays hidden.",
+    maxCount: 1,
+  },
+  curator: {
+    role: "curator",
+    label: "Curator",
+    team: "villager",
+    description:
+      "May place a random Artifact token face down on any player's card (including yourself). The artifact may change their role, mute them, or do nothing.",
+    maxCount: 1,
+  },
+  bodyguard: {
+    role: "bodyguard",
+    label: "Bodyguard",
+    team: "villager",
+    description:
+      "No night action. The player you vote for cannot be killed — if they would have died, the next-highest vote-getters die instead.",
+    maxCount: 1,
   },
 };
 

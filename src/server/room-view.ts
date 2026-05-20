@@ -23,6 +23,8 @@ export function toPublicRoom(room: Room): PublicRoom {
     mutedExceptHost: room.mutedExceptHost || undefined,
     spectatorsBlind: room.spectatorsBlind || undefined,
     removeCardLimit: room.removeCardLimit || undefined,
+    daybreakEnabled: room.daybreakEnabled || undefined,
+    wolfCap: room.wolfCap,
     centerCardCount: room.phase !== "lobby" ? room.centerCards.length : undefined,
     devMode: room.devMode || undefined,
     devSpeedMultiplier:

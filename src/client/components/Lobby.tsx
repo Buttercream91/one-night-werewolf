@@ -1,7 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PrivateView, PublicPlayer, PublicRoom, Role } from "../../shared/types.js";
-import { ALL_ROLES, DEFAULT_VOICE_PACK, ROLE_META, VOICE_PACKS } from "../../shared/types.js";
+import {
+  ALL_ROLES,
+  DAYBREAK_ROLES,
+  DEFAULT_VOICE_PACK,
+  ROLE_META,
+  VOICE_PACKS,
+  WOLF_ROLES,
+} from "../../shared/types.js";
 import { playerColor, speakingRingClass } from "../playerColor.js";
 import { send } from "../socket.js";
 import { loadNarrator, saveNarrator } from "../storage.js";
@@ -61,7 +68,12 @@ export function Lobby({ room, me }: Props) {
 
   function randomise() {
     if (!isHost) return;
-    send.setRoles(randomDeck(activePlayers.length));
+    send.setRoles(
+      randomDeck(activePlayers.length, {
+        daybreak: !!room.daybreakEnabled,
+        wolfCap: room.wolfCap ?? 3,
+      }),
+    );
   }
 
   return (
@@ -202,66 +214,12 @@ export function Lobby({ room, me }: Props) {
           )}
         </summary>
 
-        <ul className="mt-4 grid lg:grid-cols-2 gap-3">
-          {ALL_ROLES.map((role) => {
-            const meta = ROLE_META[role];
-            const n = counts[role] ?? 0;
-            return (
-              <li
-                key={role}
-                className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-100">{meta.label}</span>
-                    <TeamPill team={meta.team} />
-                    {n > 0 && <span className="text-xs text-emerald-300">×{n}</span>}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
-                </div>
-                <div className="flex gap-1.5 shrink-0">
-                  {Array.from({ length: meta.maxCount }).map((_, slotIdx) => {
-                    const isOn = slotIdx < n;
-                    // The first Werewolf is always required — render it
-                    // selected and non-clickable so the count can't drop to 0.
-                    const locked = role === "werewolf" && slotIdx === 0;
-                    return (
-                      <button
-                        key={slotIdx}
-                        disabled={!isHost || locked}
-                        onClick={() => setCount(role, isOn ? n - 1 : n + 1)}
-                        title={
-                          locked
-                            ? "Werewolf is required — at least one must stay in the deck"
-                            : isOn
-                              ? "Click to remove"
-                              : "Click to add"
-                        }
-                        className={`relative w-14 h-20 rounded-md overflow-hidden border-2 transition-all ${
-                          isOn
-                            ? "border-indigo-400 opacity-100 hover:scale-[1.04]"
-                            : "border-slate-700 opacity-30 hover:opacity-70 hover:scale-[1.04]"
-                        } ${locked ? "cursor-default hover:scale-100" : ""} disabled:hover:scale-100 disabled:cursor-not-allowed`}
-                      >
-                        <img
-                          src={ROLE_IMAGE[role]}
-                          alt={meta.label}
-                          className="absolute inset-0 w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                        {locked && (
-                          <span className="absolute top-1 right-1 rounded-sm bg-slate-950/80 px-1 text-[10px] text-slate-300">
-                            🔒
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <RoleDeckPicker
+          room={room}
+          counts={counts}
+          setCount={setCount}
+          isHost={!!isHost}
+        />
       </details>
 
       <div className="panel flex flex-col sm:flex-row sm:items-end gap-4">
@@ -508,6 +466,13 @@ function RolesDeckHostMenu({ room }: { room: PublicRoom }) {
               onToggle={() => send.setRemoveCardLimit(!room.removeCardLimit)}
               note="Allow more than (players + 3) cards. Extras populate the centre, growing the unknown pool."
             />
+            <CheckRow
+              label="Daybreak expansion"
+              checked={!!room.daybreakEnabled}
+              onToggle={() => send.setDaybreakEnabled(!room.daybreakEnabled)}
+              note="Adds the Daybreak roles (Sentinel, Alpha Wolf, Witch, Curator, etc.) to the picker and to randomise."
+            />
+            <WolfCapRow cap={room.wolfCap ?? 3} />
           </div>,
           document.body,
         )}
@@ -630,6 +595,39 @@ function CheckRow({
   );
 }
 
+// Plus/minus row for the total-wolves cap. 1..5 — clamping matches the
+// server. Used inside the Roles-in-Deck ⋯ menu.
+function WolfCapRow({ cap }: { cap: number }) {
+  const clamp = (n: number) => Math.max(1, Math.min(5, n));
+  return (
+    <div className="px-3 py-2 hover:bg-slate-800 flex items-center gap-2">
+      <span className="flex-1">
+        Wolf cap
+        <span className="block text-xs text-slate-400 mt-0.5">
+          Max total wolves (Werewolf, Alpha, Mystic, Dream) the deck can hold.
+        </span>
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          className="btn-ghost text-xs px-2 py-0.5"
+          disabled={cap <= 1}
+          onClick={() => send.setWolfCap(clamp(cap - 1))}
+        >
+          −
+        </button>
+        <span className="font-mono w-6 text-center">{cap}</span>
+        <button
+          className="btn-ghost text-xs px-2 py-0.5"
+          disabled={cap >= 5}
+          onClick={() => send.setWolfCap(clamp(cap + 1))}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NarratorPicker() {
   const [pick, setPick] = useState<string>(() => loadNarrator() ?? DEFAULT_VOICE_PACK);
   const pickedLabel =
@@ -704,6 +702,167 @@ function NarratorPicker() {
   );
 }
 
+// Base/Daybreak tabbed role grid. Daybreak tab shows a banner + enable toggle
+// when the expansion is off; the role cards stay visible but un-pickable.
+function RoleDeckPicker({
+  room,
+  counts,
+  setCount,
+  isHost,
+}: {
+  room: PublicRoom;
+  counts: Partial<Record<Role, number>>;
+  setCount: (role: Role, n: number) => void;
+  isHost: boolean;
+}) {
+  const [tab, setTab] = useState<"base" | "daybreak">("base");
+  const baseRoles = ALL_ROLES.filter((r) => !DAYBREAK_ROLES.includes(r));
+  const visibleRoles = tab === "base" ? baseRoles : DAYBREAK_ROLES;
+  const daybreakOn = !!room.daybreakEnabled;
+  const wolfCount = room.selectedRoles.filter((r) => WOLF_ROLES.includes(r)).length;
+  const wolfCap = room.wolfCap ?? 3;
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+        <TabButton active={tab === "base"} onClick={() => setTab("base")}>
+          Base
+        </TabButton>
+        <TabButton active={tab === "daybreak"} onClick={() => setTab("daybreak")}>
+          Daybreak
+          {!daybreakOn && (
+            <span className="ml-1 text-[0.65rem] text-slate-500">(off)</span>
+          )}
+        </TabButton>
+        <div className="flex-1" />
+        <span className="text-xs text-slate-400">
+          Wolves: <span className="font-mono">{wolfCount}/{wolfCap}</span>
+        </span>
+      </div>
+
+      {tab === "daybreak" && (
+        <div
+          className={`rounded-md border p-3 text-sm ${daybreakOn ? "border-emerald-800 bg-emerald-950/30 text-emerald-200" : "border-amber-900 bg-amber-950/30 text-amber-200"}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-medium">
+                Daybreak expansion {daybreakOn ? "enabled" : "disabled"}
+              </div>
+              <p className="text-xs opacity-80">
+                {daybreakOn
+                  ? "Daybreak roles can be added to the deck and may show up when you randomise."
+                  : "Daybreak roles cannot be added while this is off. The randomise button ignores them."}
+              </p>
+            </div>
+            {isHost && (
+              <button
+                className="btn-ghost text-xs"
+                onClick={() => send.setDaybreakEnabled(!daybreakOn)}
+              >
+                {daybreakOn ? "Disable" : "Enable"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ul className="grid lg:grid-cols-2 gap-3">
+        {visibleRoles.map((role) => {
+          const meta = ROLE_META[role];
+          const n = counts[role] ?? 0;
+          const daybreakLocked = DAYBREAK_ROLES.includes(role) && !daybreakOn;
+          return (
+            <li
+              key={role}
+              className={`flex items-center justify-between gap-3 rounded-md border p-3 ${daybreakLocked ? "border-slate-900 bg-slate-900/20 opacity-50" : "border-slate-800 bg-slate-900/40"}`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-100">{meta.label}</span>
+                  <TeamPill team={meta.team} />
+                  {n > 0 && <span className="text-xs text-emerald-300">×{n}</span>}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                {Array.from({ length: meta.maxCount }).map((_, slotIdx) => {
+                  const isOn = slotIdx < n;
+                  const locked = role === "werewolf" && slotIdx === 0;
+                  // Block adding wolves above the cap (slot is off and adding
+                  // would push the count over). Other slots stay clickable.
+                  const wolfBlocked =
+                    !isOn && WOLF_ROLES.includes(role) && wolfCount >= wolfCap;
+                  const disabled =
+                    !isHost || locked || daybreakLocked || wolfBlocked;
+                  return (
+                    <button
+                      key={slotIdx}
+                      disabled={disabled}
+                      onClick={() => setCount(role, isOn ? n - 1 : n + 1)}
+                      title={
+                        locked
+                          ? "Werewolf is required — at least one must stay in the deck"
+                          : daybreakLocked
+                            ? "Enable Daybreak above to add this role"
+                            : wolfBlocked
+                              ? `Wolf cap reached (${wolfCap}). Raise it in the ⋯ menu.`
+                              : isOn
+                                ? "Click to remove"
+                                : "Click to add"
+                      }
+                      className={`relative w-14 h-20 rounded-md overflow-hidden border-2 transition-all ${
+                        isOn
+                          ? "border-indigo-400 opacity-100 hover:scale-[1.04]"
+                          : "border-slate-700 opacity-30 hover:opacity-70 hover:scale-[1.04]"
+                      } ${locked ? "cursor-default hover:scale-100" : ""} disabled:hover:scale-100 disabled:cursor-not-allowed`}
+                    >
+                      <img
+                        src={ROLE_IMAGE[role]}
+                        alt={meta.label}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                      {locked && (
+                        <span className="absolute top-1 right-1 rounded-sm bg-slate-950/80 px-1 text-[10px] text-slate-300">
+                          🔒
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 text-sm rounded-t-md border-b-2 transition-colors ${
+        active
+          ? "border-indigo-400 text-indigo-200"
+          : "border-transparent text-slate-400 hover:text-slate-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function TeamPill({ team }: { team: "werewolf" | "villager" | "tanner" }) {
   const cls =
     team === "werewolf"
@@ -760,32 +919,53 @@ function DeckStatusBadge({
 }
 
 // Pick a random deck whose total card count equals players + 3, respecting
-// each role's max count. Retries if the picked deck has a Minion with no
-// Werewolf (server would reject that combo).
-function randomDeck(numPlayers: number): Role[] {
+// each role's max count, the host's wolf cap, and Daybreak enable flag.
+// Retries if the picked deck has a Minion with no Werewolf (server would
+// reject that combo) or violates the wolf cap.
+function randomDeck(
+  numPlayers: number,
+  opts: { daybreak: boolean; wolfCap: number },
+): Role[] {
   const target = numPlayers + 3;
   const pool: Role[] = [];
   for (const role of ALL_ROLES) {
+    // Skip Daybreak roles entirely when the expansion is off — the host
+    // explicitly opted out, so randomise shouldn't surprise them.
+    if (!opts.daybreak && DAYBREAK_ROLES.includes(role)) continue;
     for (let i = 0; i < ROLE_META[role].maxCount; i++) pool.push(role);
   }
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 30; attempt++) {
     const shuffled = shuffle(pool.slice()).slice(0, target);
     const hasMinion = shuffled.includes("minion");
     const hasWerewolf = shuffled.includes("werewolf");
     const masonCount = shuffled.filter((r) => r === "mason").length;
+    const wolfCount = shuffled.filter((r) => WOLF_ROLES.includes(r)).length;
     // Constraints: at least one Werewolf, Minion only if a Werewolf is in
-    // play, Masons come in pairs (0 or 2 — never lone).
-    if (hasWerewolf && (!hasMinion || hasWerewolf) && masonCount !== 1) {
+    // play, Masons come in pairs (0 or 2 — never lone), wolf total under cap.
+    if (
+      hasWerewolf &&
+      (!hasMinion || hasWerewolf) &&
+      masonCount !== 1 &&
+      wolfCount <= opts.wolfCap
+    ) {
       return shuffled;
     }
   }
-  // Fallback: force a Werewolf into a fresh shuffle and drop something else.
+  // Fallback: force a Werewolf into a fresh shuffle, drop a wolf if over the
+  // cap, and clear a lone Minion if no Werewolf made the final cut.
   const fallback = shuffle(pool.slice()).slice(0, target);
   if (!fallback.includes("werewolf")) {
     fallback[0] = "werewolf";
   }
   if (fallback.includes("minion") && !fallback.includes("werewolf")) {
     fallback[fallback.indexOf("minion")] = "villager";
+  }
+  while (fallback.filter((r) => WOLF_ROLES.includes(r)).length > opts.wolfCap) {
+    const idx = fallback.findIndex(
+      (r, i) => WOLF_ROLES.includes(r) && !(r === "werewolf" && i === fallback.indexOf("werewolf")),
+    );
+    if (idx < 0) break;
+    fallback[idx] = "villager";
   }
   return fallback;
 }

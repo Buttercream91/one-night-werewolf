@@ -169,6 +169,22 @@ export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClie
     room.broadcast();
   });
 
+  socket.on("lobby:setDaybreakEnabled", ({ enabled }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setDaybreakEnabled(attachedPlayerId, !!enabled);
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
+  socket.on("lobby:setWolfCap", ({ cap }) => {
+    const room = currentRoom();
+    if (!room || !attachedPlayerId) return;
+    const result = room.setWolfCap(attachedPlayerId, Number(cap));
+    if (!result.ok) return socket.emit("error", { message: result.error });
+    room.broadcast();
+  });
+
   socket.on("lobby:ready", ({ ready }) => {
     const room = currentRoom();
     if (!room || !attachedPlayerId) return;

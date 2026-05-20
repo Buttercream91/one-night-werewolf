@@ -1,5 +1,5 @@
 import type { Role } from "../shared/types.js";
-import { ROLE_META } from "../shared/types.js";
+import { ROLE_META, WOLF_ROLES } from "../shared/types.js";
 
 // Order roles are auto-added to the deck as players join (and auto-removed
 // in reverse as players leave). The first Werewolf is the always-on seed
@@ -33,9 +33,13 @@ function seedCumulative(): Partial<Record<Role, number>> {
 // Choose the next role to add when the deck needs to grow. Walks the
 // priority list left-to-right and returns the first slot whose role appears
 // in the deck fewer times than its cumulative count up to that slot (seed
-// Werewolf counted). Returns null when every slot is already satisfied
-// (deck is at-or-above its priority target).
-export function pickNextPriorityToAdd(deck: Role[]): Role | null {
+// Werewolf counted). Skips wolf-team slots when the deck has already hit
+// the room's wolf cap. Returns null when every slot is already satisfied.
+export function pickNextPriorityToAdd(
+  deck: Role[],
+  opts: { wolfCap?: number } = {},
+): Role | null {
+  const cap = opts.wolfCap ?? 99;
   const cumulative = seedCumulative();
   for (const role of PRIORITY_LIST) {
     cumulative[role] = (cumulative[role] ?? 0) + 1;
@@ -43,7 +47,14 @@ export function pickNextPriorityToAdd(deck: Role[]): Role | null {
     if (inDeck < cumulative[role]!) {
       // Defensive — PRIORITY_LIST already respects ROLE_META maxCount, but
       // a manual pre-fill could have already maxed out e.g. Villagers.
-      if (inDeck < ROLE_META[role].maxCount) return role;
+      if (inDeck >= ROLE_META[role].maxCount) continue;
+      // Skip wolf slots if adding would push us past the cap (counts the
+      // seed Werewolf too via deck inspection).
+      if (WOLF_ROLES.includes(role)) {
+        const wolfCount = deck.filter((r) => WOLF_ROLES.includes(r)).length;
+        if (wolfCount >= cap) continue;
+      }
+      return role;
     }
   }
   return null;

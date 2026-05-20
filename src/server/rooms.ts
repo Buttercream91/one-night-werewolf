@@ -16,7 +16,13 @@ import type {
   ServerToClient,
   WinnerSide,
 } from "../shared/types.js";
-import { NIGHT_ORDER, PLAYER_COLOR_IDS, ROLE_META } from "../shared/types.js";
+import {
+  DAYBREAK_ROLES,
+  NIGHT_ORDER,
+  PLAYER_COLOR_IDS,
+  ROLE_META,
+  WOLF_ROLES,
+} from "../shared/types.js";
 import {
   pickNextPriorityToAdd,
   pickNextPriorityToRemoveIdx,
@@ -105,6 +111,14 @@ export class Room {
   // accepts any size >= active players + 3 instead of requiring exact match.
   // Extras are dealt into the centre, growing the unknown pool.
   removeCardLimit = false;
+  // Host-enabled Daybreak expansion. Off by default — disabling it removes
+  // any Daybreak roles currently in selectedRoles so the deck stays valid.
+  daybreakEnabled = false;
+  // Maximum number of wolf-team cards (Werewolf, Alpha/Mystic/Dream Wolf)
+  // allowed in the deck. Default 3 per Daybreak guidance. Host can dial it
+  // between 1 and 5 via the role-section menu. Hard cap is also enforced by
+  // each role's ROLE_META.maxCount.
+  wolfCap = 3;
   // Dev mode (host-only). Enables the dev panel's server-side actions.
   devMode = false;
   // Multiplier applied to upcoming night-step + day-phase durations. 1 by
@@ -283,6 +297,26 @@ export class Room {
     }
     if ((counts.mason ?? 0) === 1) {
       return { ok: false, error: "Masons come in pairs — pick 0 or 2" };
+    }
+    // Daybreak gate — the host must explicitly enable the expansion before
+    // any of its roles can be in the deck.
+    if (!this.daybreakEnabled) {
+      const stray = DAYBREAK_ROLES.find((r) => (counts[r] ?? 0) > 0);
+      if (stray) {
+        return {
+          ok: false,
+          error: `${ROLE_META[stray].label} is a Daybreak role — enable the Daybreak expansion to use it.`,
+        };
+      }
+    }
+    // Wolf cap — defensive, since the lobby UI already blocks picks above
+    // the cap. Counts every wolf-team role (Werewolf + Alpha/Mystic/Dream).
+    const wolfCount = this.selectedRoles.filter((r) => WOLF_ROLES.includes(r)).length;
+    if (wolfCount > this.wolfCap) {
+      return {
+        ok: false,
+        error: `Too many wolves (${wolfCount}/${this.wolfCap}) — lower the count or raise the cap in the deck menu.`,
+      };
     }
 
     // Reset shared per-game state on every player (active and spectator).
@@ -774,7 +808,9 @@ export class Room {
     const target = activeCount + 3;
     let safety = 32;
     while (this.selectedRoles.length < target && safety-- > 0) {
-      const role = pickNextPriorityToAdd(this.selectedRoles);
+      const role = pickNextPriorityToAdd(this.selectedRoles, {
+        wolfCap: this.wolfCap,
+      });
       if (!role) break;
       this.selectedRoles.push(role);
     }
@@ -878,6 +914,48 @@ export class Room {
       return { ok: false, error: "Only configurable in the lobby" };
     }
     this.removeCardLimit = remove;
+    return { ok: true };
+  }
+
+  // Toggle the Daybreak expansion. Disabling it strips Daybreak roles out of
+  // the current deck so the room stays valid; the auto-adjuster then tops up
+  // with base-priority roles if there's room.
+  setDaybreakEnabled(hostId: string, enabled: boolean): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (this.phase !== "lobby") {
+      return { ok: false, error: "Only configurable in the lobby" };
+    }
+    this.daybreakEnabled = enabled;
+    if (!enabled) {
+      this.selectedRoles = this.selectedRoles.filter(
+        (r) => !DAYBREAK_ROLES.includes(r),
+      );
+      this.autoAdjustDeck();
+    }
+    return { ok: true };
+  }
+
+  // Host adjusts the maximum total wolves (Werewolf + Alpha/Mystic/Dream).
+  // Clamped to 1..5; any current excess wolves are trimmed from the right.
+  setWolfCap(hostId: string, cap: number): ActionResult {
+    if (this.hostId !== hostId) return { ok: false, error: "Only the host can do that" };
+    if (this.phase !== "lobby") {
+      return { ok: false, error: "Only configurable in the lobby" };
+    }
+    const next = Math.max(1, Math.min(5, Math.floor(cap)));
+    this.wolfCap = next;
+    // Trim excess wolves if the new cap is lower than the current count.
+    let wolfCount = this.selectedRoles.filter((r) => WOLF_ROLES.includes(r)).length;
+    while (wolfCount > next) {
+      const idx = lastIndexOfAny(this.selectedRoles, WOLF_ROLES);
+      if (idx < 0) break;
+      // Never strip the seed Werewolf at index 0 — keep at least one Werewolf
+      // unless the host explicitly set cap to 0 (which we don't allow anyway).
+      if (this.selectedRoles[idx] === "werewolf" && wolfCount === 1) break;
+      this.selectedRoles.splice(idx, 1);
+      wolfCount--;
+    }
+    this.autoAdjustDeck();
     return { ok: true };
   }
 
@@ -1397,6 +1475,15 @@ function countRoles(roles: Role[]): Partial<Record<Role, number>> {
   const c: Partial<Record<Role, number>> = {};
   for (const r of roles) c[r] = (c[r] ?? 0) + 1;
   return c;
+}
+
+// Last index in `arr` whose value is one of `needles`. Used by setWolfCap to
+// trim a wolf-team role from the rightmost position when the cap shrinks.
+function lastIndexOfAny<T>(arr: T[], needles: T[]): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (needles.includes(arr[i])) return i;
+  }
+  return -1;
 }
 
 function shuffle<T>(arr: T[]): T[] {

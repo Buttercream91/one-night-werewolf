@@ -8,3 +8,9 @@ dist
 # Local screenshots / scratch
 Capture*.PNG
 Capture*.png
+
+# Source / reference assets that get processed into public/ — keep the
+# originals on disk for editing but don't ship them.
+Daybreak/
+*.m4a
+medieval council table.png
