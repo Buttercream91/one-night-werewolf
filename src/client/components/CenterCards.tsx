@@ -7,7 +7,8 @@ export type CenterMode =
   | "lone-wolf"
   | "seer-center"
   | "drunk"
-  | "apprentice-seer";
+  | "apprentice-seer"
+  | "witch-peek";
 
 interface Props {
   me: PrivateView;
@@ -37,6 +38,8 @@ export function CenterCards({ me, room, mode, selected, setSelected }: Props) {
       send.nightAction({ kind: "werewolf_lone_view", centerIndex: index });
     } else if (mode === "apprentice-seer") {
       send.nightAction({ kind: "apprentice_seer_view", centerIndex: index });
+    } else if (mode === "witch-peek") {
+      send.nightAction({ kind: "witch_peek_center", centerIndex: index });
     } else if (mode === "drunk") {
       send.nightAction({ kind: "drunk_swap", centerIndex: index });
     } else if (mode === "seer-center") {
@@ -117,6 +120,8 @@ function labelForMode(mode: CenterMode): string {
       return "Click a card to peek";
     case "apprentice-seer":
       return "Click one card to peek";
+    case "witch-peek":
+      return "Click a card to peek (you must then swap it with a player)";
     case "seer-center":
       return "Pick 2 cards to peek";
     case "drunk":
@@ -148,6 +153,12 @@ function peekedCenters(me: PrivateView, room: PublicRoom): Map<number, Role> {
   const appSeerActing =
     step === "apprentice_seer" ||
     (step === "doppelganger_act" && me.myOriginalRole === "doppelganger");
+  // Witch peeked → visible during their step (or doppelganger_act if
+  // DG-as-Witch is acting). Their note kind is witch_swapped — the role
+  // is recorded as peekedRole before the swap fired.
+  const witchActing =
+    step === "witch" ||
+    (step === "doppelganger_act" && me.myOriginalRole === "doppelganger");
   for (const n of me.notes) {
     if (n.kind === "lone_wolf_center" && wolfActing) {
       m.set(n.index, n.role);
@@ -155,6 +166,8 @@ function peekedCenters(me: PrivateView, room: PublicRoom): Map<number, Role> {
       for (const c of n.cards) m.set(c.index, c.role);
     } else if (n.kind === "apprentice_seer_center" && appSeerActing) {
       m.set(n.index, n.role);
+    } else if (n.kind === "witch_swapped" && witchActing) {
+      m.set(n.centerIndex, n.peekedRole);
     }
   }
   return m;

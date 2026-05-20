@@ -243,6 +243,21 @@ export type ActionLogEntry =
       teamLocked: boolean;
     }
   | { kind: "pi_stopped"; actorId: string }
+  | {
+      kind: "witch_swapped";
+      actorId: string;
+      centerIndex: number;
+      peekedRole: Role;
+      targetId: string;
+    }
+  | { kind: "witch_skipped"; actorId: string }
+  | {
+      kind: "village_idiot_rotated";
+      actorId: string;
+      playerIds: string[];
+      direction: "left" | "right";
+    }
+  | { kind: "village_idiot_skipped"; actorId: string }
   | { kind: "doppelganger_copied"; actorId: string; targetId: string; copiedRole: Role }
   | { kind: "werewolves_revealed"; actorIds: string[] }
   | { kind: "lone_wolf_peeked"; actorId: string; centerIndex: number; role: Role }
@@ -430,6 +445,21 @@ export type NightNote =
   // saw; teamLocked indicates whether seeing this card flipped the PI to
   // that role's team (true when role is werewolf/minion/tanner).
   | { kind: "pi_saw"; targetId: string; role: Role; teamLocked: boolean }
+  // Daybreak — Witch swapped centre[index] with target's card. peekedRole
+  // is what the Witch saw before swapping (since they're allowed to know).
+  | {
+      kind: "witch_swapped";
+      centerIndex: number;
+      peekedRole: Role;
+      targetId: string;
+    }
+  // Daybreak — Village Idiot recall: which players were rotated and which
+  // direction (no role info — they swapped cards blind).
+  | {
+      kind: "village_idiot_rotated";
+      playerIds: string[];
+      direction: "left" | "right";
+    }
   // Daybreak — Dream Wolf doesn't wake, but they get a note acknowledging
   // the wolves can now see them.
   | { kind: "dream_wolf_seen" }
@@ -484,6 +514,26 @@ export type NightPrompt =
   // Daybreak — Apprentice Seer peeks one centre card. Uses the same centre-
   // card click UI as the Lone Wolf peek.
   | { kind: "apprentice_seer_choose"; message: string }
+  // Daybreak — Witch's first prompt: peek any centre card or skip.
+  | { kind: "witch_choose"; message: string }
+  // Daybreak — Witch's mandatory follow-up after peeking. peekedRole +
+  // peekedIndex tell the client what the Witch saw; eligiblePlayerIds is
+  // every active non-shielded player (including the Witch themselves).
+  | {
+      kind: "witch_swap_choose";
+      message: string;
+      peekedRole: Role;
+      peekedIndex: number;
+      eligiblePlayerIds: string[];
+    }
+  // Daybreak — Village Idiot rotates a ring of cards left or right (or skip).
+  // affectedPlayerIds is the rotation ring in seating order, so the client
+  // can show a tiny diagram of who's about to be shuffled.
+  | {
+      kind: "village_idiot_choose";
+      message: string;
+      affectedPlayerIds: string[];
+    }
   // Daybreak — Paranormal Investigator. picksRemaining is 2 on the first
   // prompt, 1 after a villager-team peek. Drops out as soon as the PI views
   // a non-villager-team role (they become that team) or picks Stop.
@@ -521,7 +571,17 @@ export type NightAction =
   // team viewed → PI becomes that team) or refreshes for a second pick.
   | { kind: "pi_view"; targetId: string }
   // Stops the PI's investigation after the first pick (or before any pick).
-  | { kind: "pi_stop" };
+  | { kind: "pi_stop" }
+  // Daybreak — Witch: first peeks one centre card (or skips entirely).
+  // centerIndex: null skips the whole step. Otherwise the Witch is then
+  // required to follow with a witch_swap.
+  | { kind: "witch_peek_center"; centerIndex: number | null }
+  // Daybreak — Witch's mandatory follow-up after peeking. Swaps the peeked
+  // centre card with the chosen player's card (player can be self).
+  | { kind: "witch_swap"; targetId: string }
+  // Daybreak — Village Idiot rotates every non-self, non-shielded player's
+  // card one seat left or right. direction: null skips the whole step.
+  | { kind: "village_idiot_rotate"; direction: "left" | "right" | null };
 
 export interface ChatMessage {
   id: string;

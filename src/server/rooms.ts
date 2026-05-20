@@ -64,6 +64,9 @@ export interface ServerPlayer {
   // (starts at 2, decremented on each view; cleared / set to 0 when the PI
   // becomes a non-villager team or stops early).
   piPicksRemaining?: number;
+  // Daybreak — Witch's peeked centre slot (set by witch_peek_center, used
+  // by the follow-up witch_swap to know which centre card to move).
+  witchPeekedCenterIndex?: number;
   notes: NightNote[];
   userNotes: string[]; // free-form text notes the player typed
   prompt?: NightPrompt;
@@ -348,6 +351,7 @@ export class Room {
       p.doppelgangerCopied = undefined;
       p.piTeamRole = undefined;
       p.piPicksRemaining = undefined;
+      p.witchPeekedCenterIndex = undefined;
       p.knownCurrentRole = undefined;
       p.cardFaceDown = false;
       p.notes = [];
@@ -454,6 +458,7 @@ export class Room {
       p.doppelgangerCopied = undefined;
       p.piTeamRole = undefined;
       p.piPicksRemaining = undefined;
+      p.witchPeekedCenterIndex = undefined;
       p.knownCurrentRole = undefined;
       p.cardFaceDown = false;
       p.notes = [];

@@ -91,6 +91,8 @@ function dotColor(e: ActionLogEntry): string {
     case "troublemaker_swapped":
     case "drunk_swapped":
     case "alpha_wolf_swapped":
+    case "witch_swapped":
+    case "village_idiot_rotated":
       return "bg-amber-400";
     case "werewolves_revealed":
     case "masons_revealed":
@@ -185,6 +187,43 @@ function renderEntry(e: ActionLogEntry, room: PublicRoom): ReactNode {
         <>
           <PlayerChip id={e.actorId} room={room} /> (
           <RoleChip role="paranormal_investigator" />) stopped investigating.
+        </>
+      );
+    case "witch_swapped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="witch" />)
+          saw centre #{e.centerIndex + 1} (<RoleChip role={e.peekedRole} />) and
+          moved it to <PlayerChip id={e.targetId} room={room} />.
+        </>
+      );
+    case "witch_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (<RoleChip role="witch" />)
+          chose not to peek.
+        </>
+      );
+    case "village_idiot_rotated":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (
+          <RoleChip role="village_idiot" />) rotated cards{" "}
+          {e.direction === "left" ? "left" : "right"}:{" "}
+          {e.playerIds.map((id, i) => (
+            <span key={id}>
+              {i > 0 && " → "}
+              <PlayerChip id={id} room={room} />
+            </span>
+          ))}
+          .
+        </>
+      );
+    case "village_idiot_skipped":
+      return (
+        <>
+          <PlayerChip id={e.actorId} room={room} /> (
+          <RoleChip role="village_idiot" />) didn't rotate.
         </>
       );
     case "doppelganger_copied":

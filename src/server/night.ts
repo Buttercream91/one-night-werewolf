@@ -289,6 +289,11 @@ export function defaultActionFor(
       // an optional follow-up; defaulting to stop on the first prompt is the
       // same as the player choosing not to investigate.
       return { kind: "pi_stop" };
+    case "witch":
+      // Default to skip — auto-doesn't peek + doesn't swap.
+      return { kind: "witch_peek_center", centerIndex: null };
+    case "village_idiot":
+      return { kind: "village_idiot_rotate", direction: null };
     case "intro":
       return { kind: "ack" }; // flips the player's card face-down
     case "night_starts":
@@ -297,8 +302,6 @@ export function defaultActionFor(
     // Daybreak roles that don't have logic wired yet — fall through to ack
     // so endNightStep doesn't crash on the auto-default. Each will get a
     // dedicated case in its phase.
-    case "witch":
-    case "village_idiot":
     case "revealer":
     case "curator":
     case "doppelganger_insomniac":
@@ -582,6 +585,45 @@ export function setupNightStep(room: Room, step: NightStep) {
           eligiblePlayerIds: eligible,
         };
         room.nightPendingActors.add(r.id);
+      }
+      return;
+    }
+    case "witch": {
+      for (const w of actors) {
+        w.witchPeekedCenterIndex = undefined;
+        w.prompt = {
+          kind: "witch_choose",
+          message:
+            "You are the Witch. You may peek one centre card. If you do, you must swap it with any player's card (including yourself).",
+        };
+        room.nightPendingActors.add(w.id);
+      }
+      return;
+    }
+    case "village_idiot": {
+      for (const v of actors) {
+        // Rotation ring: every active non-self, non-shielded player who's
+        // been dealt a card. Order = the room.players order. Shielded
+        // players are excluded so the rotation can never touch a shielded
+        // card.
+        const affected = room.players
+          .filter(
+            (p) =>
+              p.id !== v.id &&
+              !p.spectating &&
+              !!p.originalRole &&
+              !room.shieldedPlayerIds.has(p.id),
+          )
+          .map((p) => p.id);
+        v.prompt = {
+          kind: "village_idiot_choose",
+          message:
+            affected.length < 2
+              ? "You are the Village Idiot. Not enough other players to rotate."
+              : "You are the Village Idiot. Rotate everyone else's card one seat left or right.",
+          affectedPlayerIds: affected,
+        };
+        room.nightPendingActors.add(v.id);
       }
       return;
     }
@@ -968,6 +1010,119 @@ export function applyNightAction(
           room.nightPendingActors.add(player.id);
         }
       }
+      return { ok: true };
+    }
+
+    case "witch_peek_center": {
+      if (step !== "witch" || original !== "witch") {
+        return { ok: false, error: "Not witch step" };
+      }
+      if (action.centerIndex === null) {
+        room.actionLog.push({ kind: "witch_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      if (
+        !Number.isInteger(action.centerIndex) ||
+        action.centerIndex < 0 ||
+        action.centerIndex >= room.centerCards.length
+      ) {
+        return { ok: false, error: "Invalid center index" };
+      }
+      // Stash the peeked index and prompt the Witch for the mandatory swap.
+      player.witchPeekedCenterIndex = action.centerIndex;
+      const peekedRole = room.centerCards[action.centerIndex];
+      const eligible = room.players
+        .filter((p) => !p.spectating && !!p.originalRole)
+        .map((p) => p.id);
+      player.prompt = {
+        kind: "witch_swap_choose",
+        message:
+          "You saw the centre card. You must now swap it with any player's card (including yourself).",
+        peekedRole,
+        peekedIndex: action.centerIndex,
+        eligiblePlayerIds: eligible,
+      };
+      // Keep the Witch as a pending actor — the swap is mandatory.
+      room.nightPendingActors.add(player.id);
+      return { ok: true };
+    }
+    case "witch_swap": {
+      if (step !== "witch" || original !== "witch") {
+        return { ok: false, error: "Not witch step" };
+      }
+      const centerIndex = player.witchPeekedCenterIndex;
+      if (centerIndex === undefined) {
+        return { ok: false, error: "Peek a centre card first" };
+      }
+      const target = room.players.find((p) => p.id === action.targetId);
+      if (!target || target.spectating || !target.originalRole) {
+        return { ok: false, error: "Invalid target" };
+      }
+      // The Witch is allowed to target themselves, so no self-check.
+      // Shielded targets are blocked — touching a shielded card is forbidden.
+      if (isShielded(room, target.id)) {
+        return { ok: false, error: "That player is shielded by the Sentinel." };
+      }
+      const peekedRole = room.centerCards[centerIndex];
+      room.swapPlayerWithCenter(target.id, centerIndex);
+      player.witchPeekedCenterIndex = undefined;
+      player.notes.push({
+        kind: "witch_swapped",
+        centerIndex,
+        peekedRole,
+        targetId: target.id,
+      });
+      room.actionLog.push({
+        kind: "witch_swapped",
+        actorId: player.id,
+        centerIndex,
+        peekedRole,
+        targetId: target.id,
+      });
+      return { ok: true };
+    }
+    case "village_idiot_rotate": {
+      if (step !== "village_idiot" || original !== "village_idiot") {
+        return { ok: false, error: "Not village idiot step" };
+      }
+      if (action.direction === null) {
+        room.actionLog.push({ kind: "village_idiot_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      // Rebuild the rotation ring at action time so any late-arriving
+      // shield (shouldn't happen in normal flow, but defensive) is honoured.
+      const ring = room.players.filter(
+        (p) =>
+          p.id !== player.id &&
+          !p.spectating &&
+          !!p.originalRole &&
+          !room.shieldedPlayerIds.has(p.id),
+      );
+      if (ring.length < 2) {
+        // Nothing meaningful to rotate; treat as skip.
+        room.actionLog.push({ kind: "village_idiot_skipped", actorId: player.id });
+        return { ok: true };
+      }
+      const roles = ring.map((p) => room.currentRoleOf(p.id));
+      // Left = shift each card to the seat on its left (player[i] gets
+      // what player[i+1] had). Right = the opposite.
+      const rotated =
+        action.direction === "left"
+          ? [...roles.slice(1), roles[0]]
+          : [roles[roles.length - 1], ...roles.slice(0, -1)];
+      ring.forEach((p, i) => room.setCurrentRole(p.id, rotated[i]));
+      const playerIds = ring.map((p) => p.id);
+      player.notes.push({
+        kind: "village_idiot_rotated",
+        playerIds,
+        direction: action.direction,
+      });
+      room.actionLog.push({
+        kind: "village_idiot_rotated",
+        actorId: player.id,
+        playerIds,
+        direction: action.direction,
+      });
       return { ok: true };
     }
 

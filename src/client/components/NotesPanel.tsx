@@ -142,6 +142,20 @@ function renderNote(n: NightNote, room: PublicRoom): ReactNode {
           <RoleChip role={n.role} />.
         </>
       );
+    case "witch_swapped":
+      return (
+        <>
+          You saw centre #{n.centerIndex + 1} (<RoleChip role={n.peekedRole} />) and
+          swapped it into <PlayerChip id={n.targetId} room={room} />'s hand.
+        </>
+      );
+    case "village_idiot_rotated":
+      return (
+        <>
+          You rotated cards {n.direction === "left" ? "left" : "right"}:{" "}
+          <PlayerList ids={n.playerIds} room={room} />.
+        </>
+      );
     case "dream_wolf_seen":
       return <>You stayed asleep — the wolves can see you.</>;
     case "dream_wolves_in_play":

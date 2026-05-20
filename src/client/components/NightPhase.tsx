@@ -168,6 +168,7 @@ function computeCenterMode(prompt: NightPrompt | undefined, seerSubMode: "player
   if (prompt.kind === "drunk_choose") return "drunk";
   if (prompt.kind === "seer_choose" && seerSubMode === "center") return "seer-center";
   if (prompt.kind === "apprentice_seer_choose") return "apprentice-seer";
+  if (prompt.kind === "witch_choose") return "witch-peek";
   return "view";
 }
 
@@ -237,6 +238,35 @@ function ActionForm({
             room={room}
             eligibleIds={prompt.eligiblePlayerIds}
             picksRemaining={prompt.picksRemaining}
+          />
+        )}
+        {prompt.kind === "witch_choose" && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <p className="text-sm text-slate-400 italic">
+              Click a centre card above to peek (you'll then have to swap it).
+            </p>
+            <button
+              className="btn-ghost"
+              onClick={() =>
+                send.nightAction({ kind: "witch_peek_center", centerIndex: null })
+              }
+            >
+              Skip
+            </button>
+          </div>
+        )}
+        {prompt.kind === "witch_swap_choose" && (
+          <WitchSwapControls
+            room={room}
+            eligibleIds={prompt.eligiblePlayerIds}
+            peekedRole={prompt.peekedRole}
+            peekedIndex={prompt.peekedIndex}
+          />
+        )}
+        {prompt.kind === "village_idiot_choose" && (
+          <VillageIdiotControls
+            room={room}
+            affectedIds={prompt.affectedPlayerIds}
           />
         )}
       </div>
@@ -325,6 +355,104 @@ function AlphaWolfControls({
       >
         Skip
       </button>
+    </div>
+  );
+}
+
+function WitchSwapControls({
+  room,
+  eligibleIds,
+  peekedRole,
+  peekedIndex,
+}: {
+  room: PublicRoom;
+  eligibleIds: string[];
+  peekedRole: Role;
+  peekedIndex: number;
+}) {
+  const eligible = room.players.filter((p) => eligibleIds.includes(p.id));
+  const shielded = room.shieldedPlayerIds ?? [];
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-slate-400">
+        You peeked centre #{peekedIndex + 1}:{" "}
+        <span className="text-slate-200 font-medium">{ROLE_META[peekedRole].label}</span>.
+        You must now swap it with any player's card.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {eligible.map((p) => {
+          const isShielded = shielded.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              className="btn-ghost"
+              disabled={isShielded}
+              title={isShielded ? "Shielded by the Sentinel — can't be swapped" : undefined}
+              onClick={() => send.nightAction({ kind: "witch_swap", targetId: p.id })}
+            >
+              Give to {p.name}
+              {isShielded && <span className="ml-1 text-sky-300">🛡</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function VillageIdiotControls({
+  room,
+  affectedIds,
+}: {
+  room: PublicRoom;
+  affectedIds: string[];
+}) {
+  const affectedNames = affectedIds
+    .map((id) => room.players.find((p) => p.id === id)?.name ?? "?")
+    .join(" → ");
+  const enoughToRotate = affectedIds.length >= 2;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-slate-400">
+        {enoughToRotate ? (
+          <>
+            Rotation ring (left = each card shifts left): {affectedNames}.
+          </>
+        ) : (
+          <>
+            Only {affectedIds.length} player would shift — there's nothing to
+            rotate. Skip.
+          </>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="btn-ghost"
+          disabled={!enoughToRotate}
+          onClick={() =>
+            send.nightAction({ kind: "village_idiot_rotate", direction: "left" })
+          }
+        >
+          ← Rotate left
+        </button>
+        <button
+          className="btn-ghost"
+          disabled={!enoughToRotate}
+          onClick={() =>
+            send.nightAction({ kind: "village_idiot_rotate", direction: "right" })
+          }
+        >
+          Rotate right →
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={() =>
+            send.nightAction({ kind: "village_idiot_rotate", direction: null })
+          }
+        >
+          Skip
+        </button>
+      </div>
     </div>
   );
 }
