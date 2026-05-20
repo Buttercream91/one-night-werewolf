@@ -1,5 +1,6 @@
 import type { Socket } from "socket.io";
 import type { ClientToServer, Role, ServerToClient } from "../shared/types.js";
+import { ALL_ROLES } from "../shared/types.js";
 import { rooms } from "./rooms.js";
 
 export function registerRoomHandlers(socket: Socket<ClientToServer, ServerToClient>) {
@@ -418,20 +419,10 @@ function validName(name: unknown): name is string {
   return typeof name === "string" && name.trim().length > 0 && name.trim().length <= 24;
 }
 
-const ROLE_VALUES = new Set<Role>([
-  "doppelganger",
-  "werewolf",
-  "minion",
-  "mason",
-  "seer",
-  "robber",
-  "troublemaker",
-  "drunk",
-  "insomniac",
-  "hunter",
-  "tanner",
-  "villager",
-]);
+// Build the role allowlist directly from ALL_ROLES so the Daybreak roles
+// (and any future additions) are picked up automatically — the previous
+// hard-coded set silently dropped Daybreak picks on the way through.
+const ROLE_VALUES = new Set<Role>(ALL_ROLES);
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && ROLE_VALUES.has(value as Role);
 }
