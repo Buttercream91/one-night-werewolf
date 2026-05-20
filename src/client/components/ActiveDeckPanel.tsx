@@ -7,20 +7,39 @@ interface Props {
   roles: Role[];
 }
 
-// The sequence the moderator calls roles in during the night phase.
-// Roles with no night turn (Hunter, Tanner, Villager) trail at the end.
+// The sequence the moderator calls roles in during the night phase. Mirrors
+// the server's NIGHT_ORDER (mapped from steps to roles). Roles that don't
+// wake at night (Hunter, Tanner, Bodyguard, Villager) trail at the end.
 const NIGHT_CALL_ORDER: Role[] = [
+  // Acts first.
+  "sentinel",
   "doppelganger",
+  // Wolves wake together; Daybreak wolves are sub-steps of the wolves call.
   "werewolf",
+  "alpha_wolf",
+  "mystic_wolf",
+  "dream_wolf",
   "minion",
   "mason",
+  // Seer family.
   "seer",
+  "apprentice_seer",
+  "paranormal_investigator",
+  // Robber + Witch.
   "robber",
+  "witch",
+  // Troublemaker + Village Idiot.
   "troublemaker",
+  "village_idiot",
   "drunk",
   "insomniac",
+  // Late Daybreak roles.
+  "revealer",
+  "curator",
+  // No-night-action roles at the bottom.
   "hunter",
   "tanner",
+  "bodyguard",
   "villager",
 ];
 
@@ -41,7 +60,7 @@ export function ActiveDeckPanel({ roles }: Props) {
       <h3 className="text-sm uppercase tracking-wider text-slate-400 mb-3">
         Active deck{" "}
         <span className="text-slate-500">
-          ({roles.length} cards — 3 in centre, listed in night-call order)
+          ({roles.length} cards, listed in night-call order)
         </span>
       </h3>
       <ul className="flex flex-wrap gap-2">
